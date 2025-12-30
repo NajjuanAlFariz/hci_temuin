@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "968431767162",
+    "project_id": "temuin-app-ab0e2",
+    "storage_bucket": "temuin-app-ab0e2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:968431767162:android:567ad51307d64945c675c3",
+        "android_client_info": {
+          "package_name": "com.example.temuin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCLOP5GdPrgpSYUK5EkLdWL6QT3mTwiK3s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:968431767162:android:919ade0aa7e1bbc5c675c3",
+        "android_client_info": {
+          "package_name": "temuin.barang_hilang.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCLOP5GdPrgpSYUK5EkLdWL6QT3mTwiK3s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -5,6 +5,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/navbar.dart';
 import '../../utils/category_icon_mapper.dart';
 import '../../utils/time_ago.dart';
+import '../../widgets/report_detail_dialog.dart'; // ⬅️ POP UP
 
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
@@ -30,15 +31,12 @@ class _CategoryScreenState extends State<CategoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-      appBar: AppBar(
-        title: const Text('Kategori'),
-      ),
+      appBar: AppBar(title: const Text('Kategori')),
 
-      /// ================= DATA =================
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('lost_items').snapshots(),
-        builder: (context, lostSnapshot) {
-          if (!lostSnapshot.hasData) {
+        builder: (context, lostSnap) {
+          if (!lostSnap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -46,19 +44,19 @@ class _CategoryScreenState extends State<CategoryScreen> {
             stream: FirebaseFirestore.instance
                 .collection('found_items')
                 .snapshots(),
-            builder: (context, foundSnapshot) {
-              if (!foundSnapshot.hasData) {
+            builder: (context, foundSnap) {
+              if (!foundSnap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
 
               /// ================= MERGE DATA =================
-              final lostItems = lostSnapshot.data!.docs.map((d) {
+              final lostItems = lostSnap.data!.docs.map((d) {
                 final data = d.data() as Map<String, dynamic>;
                 data['type'] = 'lost';
                 return data;
               });
 
-              final foundItems = foundSnapshot.data!.docs.map((d) {
+              final foundItems = foundSnap.data!.docs.map((d) {
                 final data = d.data() as Map<String, dynamic>;
                 data['type'] = 'found';
                 return data;
@@ -68,52 +66,19 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
               final filteredItems = selectedCategory == 'Semua'
                   ? allItems.toList()
-                  : allItems
-                      .where((e) =>
-                          e['category']
+                  : allItems.where((e) {
+                      return e['category']
                               .toString()
                               .toLowerCase() ==
-                          selectedCategory.toLowerCase())
-                      .toList();
+                          selectedCategory.toLowerCase();
+                    }).toList();
 
-              final total = allItems.length;
-              final found =
-                  allItems.where((e) => e['type'] == 'found').length;
-              final lost =
-                  allItems.where((e) => e['type'] == 'lost').length;
-
-              /// ================= UI =================
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    /// ================= STAT BOX =================
-                    Row(
-                      children: [
-                        _StatBox(
-                          title: 'Total Item',
-                          value: total,
-                          color: Colors.blue,
-                        ),
-                        const SizedBox(width: 8),
-                        _StatBox(
-                          title: 'Ditemukan',
-                          value: found,
-                          color: Colors.green,
-                        ),
-                        const SizedBox(width: 8),
-                        _StatBox(
-                          title: 'Dicari',
-                          value: lost,
-                          color: Colors.red,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    /// ================= CATEGORY TAB =================
+                    /// ================= FILTER =================
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
@@ -125,14 +90,13 @@ class _CategoryScreenState extends State<CategoryScreen> {
                               label: Text(cat),
                               selected: active,
                               selectedColor: Warna.blue,
-                              onSelected: (_) {
-                                setState(() => selectedCategory = cat);
-                              },
                               labelStyle: TextStyle(
                                 color:
                                     active ? Colors.white : Colors.black,
-                                fontWeight: FontWeight.w500,
                               ),
+                              onSelected: (_) {
+                                setState(() => selectedCategory = cat);
+                              },
                             ),
                           );
                         }).toList(),
@@ -141,20 +105,22 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
                     const SizedBox(height: 16),
 
-                    /// ================= GRID ITEM =================
+                    /// ================= GRID =================
                     GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
+                      itemCount: filteredItems.length,
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
-                        mainAxisSpacing: 12,
                         crossAxisSpacing: 12,
-                        childAspectRatio: 0.82,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 0.68, // ANTI OVERFLOW
                       ),
-                      itemCount: filteredItems.length,
-                      itemBuilder: (_, index) {
-                        return _ItemCard(filteredItems[index]);
+                      itemBuilder: (_, i) {
+                        return ReportItemCard(
+                          data: filteredItems[i],
+                        );
                       },
                     ),
                   ],
@@ -171,124 +137,136 @@ class _CategoryScreenState extends State<CategoryScreen> {
 }
 
 /// ============================================================
-/// STAT BOX
+/// ITEM CARD (TAP → POP UP DETAIL)
 /// ============================================================
-class _StatBox extends StatelessWidget {
-  final String title;
-  final int value;
-  final Color color;
-
-  const _StatBox({
-    required this.title,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value.toString(),
-              style: TextStyle(
-                color: color,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// ============================================================
-/// ITEM CARD
-/// ============================================================
-class _ItemCard extends StatelessWidget {
+class ReportItemCard extends StatelessWidget {
   final Map<String, dynamic> data;
 
-  const _ItemCard(this.data);
+  const ReportItemCard({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
     final bool isLost = data['type'] == 'lost';
-    final String category = data['category'];
     final String name = data['name'];
+    final String category = data['category'];
     final String location = data['location'];
+    final String? imageUrl = data['image_url'];
     final Timestamp? createdAt = data['created_at'];
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Warna.blue,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          /// ICON
-          Container(
-            width: 48,
-            height: 48,
-            padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-            child: CategoryIconMapper.buildIcon(category),
+    final String timeText =
+        createdAt != null ? timeAgo(createdAt) : '-';
+
+    return GestureDetector(
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (_) => ReportDetailDialog(
+            data: data,
+            type: isLost ? ReportType.lost : ReportType.found,
           ),
-
-          const SizedBox(height: 12),
-
-          /// NAME
-          Text(
-            name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-
-          /// STATUS
-          Text(
-            isLost
-                ? 'Hilang di $location'
-                : 'Ditemukan di $location',
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-            ),
-            maxLines: 2,
-          ),
-
-          const Spacer(),
-
-          /// TIME
-          if (createdAt != null)
-            Text(
-              timeAgo(createdAt),
-              style: const TextStyle(
-                color: Colors.white60,
-                fontSize: 11,
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          children: [
+            /// IMAGE / ICON
+            ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(18)),
+              child: SizedBox(
+                height: 110,
+                width: double.infinity,
+                child: isLost && imageUrl != null
+                    ? Image.network(imageUrl, fit: BoxFit.cover)
+                    : Container(
+                        color: Warna.blue,
+                        alignment: Alignment.center,
+                        child: CategoryIconMapper.buildIcon(
+                          category,
+                          size: 44,
+                        ),
+                      ),
               ),
             ),
-        ],
+
+            /// CONTENT
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    /// NAME
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    /// STATUS + TIME
+                    Text(
+                      isLost
+                          ? 'Hilang • $timeText'
+                          : 'Ditemukan • $timeText',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isLost ? Colors.red : Colors.green,
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    /// LOCATION
+                    Text(
+                      location,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                      ),
+                    ),
+
+                    const Spacer(),
+
+                    /// BADGE
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isLost
+                            ? Colors.red.shade100
+                            : Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        isLost ? 'Di cari' : 'Ditemukan',
+                        style: TextStyle(
+                          color:
+                              isLost ? Colors.red : Colors.green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

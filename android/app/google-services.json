@@ -7,31 +7,25 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:968431767162:android:567ad51307d64945c675c3",
-        "android_client_info": {
-          "package_name": "com.example.temuin"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyCLOP5GdPrgpSYUK5EkLdWL6QT3mTwiK3s"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
         "mobilesdk_app_id": "1:968431767162:android:919ade0aa7e1bbc5c675c3",
         "android_client_info": {
           "package_name": "temuin.barang_hilang.com"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "968431767162-6p1frr27fkks76akn9tkhfnnposq3drk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "temuin.barang_hilang.com",
+            "certificate_hash": "b3943652a8d82c9c0633b84d6eb9ac1bc3508c81"
+          }
+        },
+        {
+          "client_id": "968431767162-35fksu9hl9r3t9pj2jmophfa5mk12do5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCLOP5GdPrgpSYUK5EkLdWL6QT3mTwiK3s"
@@ -39,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "968431767162-35fksu9hl9r3t9pj2jmophfa5mk12do5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

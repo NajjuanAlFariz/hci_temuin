@@ -14,7 +14,10 @@ Future<void> main() async {
   /// ================= SUPABASE INIT =================
   await Supabase.initialize(
     url: 'https://mgjyfjejqppcehwwezfp.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nanlmamVqcXBwY2Vod3dlemZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY5NDg3NjcsImV4cCI6MjA4MjUyNDc2N30.nq_llR1tXX4I7vcx8I0GKC0pUqSsQGVDJB9ho7iViNQ',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.'
+        'eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1nanlmamVqcXBwY2Vod3dlemZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY5NDg3NjcsImV4cCI6MjA4MjUyNDc2N30.'
+        'nq_llR1tXX4I7vcx8I0GKC0pUqSsQGVDJB9ho7iViNQ',
   );
 
   runApp(const TemuinApp());
@@ -29,6 +32,8 @@ class TemuinApp extends StatelessWidget {
       title: 'Temuin',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+
+      /// ================= ROUTER =================
       routerConfig: AppRouter.router,
     );
   }

@@ -45,16 +45,16 @@ class AppRouter {
         builder: (context, state) => const HomeScreen(),
       ),
       GoRoute(
-      path: '/report-lost',
-      builder: (context, state) => const ReportLostScreen(),
+        path: '/report-lost',
+        builder: (context, state) => const ReportLostScreen(),
       ),
       GoRoute(
-      path: '/report-found',
-      builder: (context, state) => const ReportFoundScreen(),
+        path: '/report-found',
+        builder: (context, state) => const ReportFoundScreen(),
       ),
       GoRoute(
-      path: '/kategori',
-      builder: (context, state) => const CategoryScreen(),
+        path: '/kategori',
+        builder: (context, state) => const CategoryScreen(),
       ),
     ],
   );

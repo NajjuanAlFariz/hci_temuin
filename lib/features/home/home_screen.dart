@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../theme/app_colors.dart';
 import '../../widgets/navbar.dart';
 import '../../widgets/upload_report_section.dart';
+import '../../widgets/report_detail_bottom_sheet.dart';
 import '../../utils/category_icon_mapper.dart';
 import '../../utils/time_ago.dart';
 
@@ -71,7 +73,7 @@ class LostItemStatCard extends StatelessWidget {
         stream: FirebaseFirestore.instance.collection('lost_items').snapshots(),
         builder: (_, snapshot) {
           final total = snapshot.data?.docs.length ?? 0;
-          return StatCard(
+          return _StatCard(
             title: 'Barang Hilang',
             count: total,
             iconAsset: 'assets/image/icon/lost.png',
@@ -93,10 +95,11 @@ class FoundItemStatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('found_items').snapshots(),
+        stream:
+            FirebaseFirestore.instance.collection('found_items').snapshots(),
         builder: (_, snapshot) {
           final total = snapshot.data?.docs.length ?? 0;
-          return StatCard(
+          return _StatCard(
             title: 'Barang Temuan',
             count: total,
             iconAsset: 'assets/image/icon/found.png',
@@ -111,14 +114,13 @@ class FoundItemStatCard extends StatelessWidget {
 /// ============================================================
 /// STAT CARD UI
 /// ============================================================
-class StatCard extends StatelessWidget {
+class _StatCard extends StatelessWidget {
   final String title;
   final int count;
   final String iconAsset;
   final Color iconBgColor;
 
-  const StatCard({
-    super.key,
+  const _StatCard({
     required this.title,
     required this.count,
     required this.iconAsset,
@@ -174,7 +176,7 @@ class StatCard extends StatelessWidget {
 }
 
 /// ============================================================
-/// LAPORAN TERBARU (HILANG + TEMUAN)
+/// LAPORAN TERBARU (HILANG + TEMUAN + POPUP DETAIL)
 /// ============================================================
 class LatestReports extends StatelessWidget {
   const LatestReports({super.key});
@@ -236,65 +238,80 @@ class LatestReports extends StatelessWidget {
                 final String type = data['type'];
                 final Timestamp? createdAt = data['created_at'];
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Warna.blue,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    children: [
-                      /// ICON KATEGORI
-                      Container(
-                        width: 48,
-                        height: 48,
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          color: Colors.black,
-                          shape: BoxShape.circle,
-                        ),
-                        child: CategoryIconMapper.buildIcon(
-                          category,
-                          size: 28,
-                        ),
+                return GestureDetector(
+                  onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.white,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(24)),
                       ),
+                      builder: (_) =>
+                          ReportDetailBottomSheet(data: data),
+                    );
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Warna.blue,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Row(
+                      children: [
+                        /// ICON
+                        Container(
+                          width: 48,
+                          height: 48,
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
+                          ),
+                          child: CategoryIconMapper.buildIcon(
+                            category,
+                            size: 28,
+                          ),
+                        ),
 
-                      const SizedBox(width: 12),
+                        const SizedBox(width: 12),
 
-                      /// TEXT
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              type == 'lost'
-                                  ? 'Hilang di $location'
-                                  : 'Ditemukan di $location',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                            if (createdAt != null)
+                        /// TEXT
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                timeAgo(createdAt),
+                                name,
                                 style: const TextStyle(
-                                  color: Colors.white60,
-                                  fontSize: 11,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                          ],
+                              Text(
+                                type == 'lost'
+                                    ? 'Hilang di $location'
+                                    : 'Ditemukan di $location',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              if (createdAt != null)
+                                Text(
+                                  timeAgo(createdAt),
+                                  style: const TextStyle(
+                                    color: Colors.white60,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 );
               }).toList(),
@@ -322,7 +339,9 @@ class _LatestHeader extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         TextButton(
-          onPressed: () {},
+          onPressed: () {
+            context.go('/kategori');
+          },
           child: const Text('Lihat Semua'),
         ),
       ],

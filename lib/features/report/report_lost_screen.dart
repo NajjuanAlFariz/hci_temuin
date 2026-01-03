@@ -32,30 +32,67 @@ class _ReportLostScreenState extends State<ReportLostScreen> {
     'Elektronik',
     'Alat Makan',
     'Alat Tulis',
-    'Aksesoris',
-    'Lainnya',
   ];
 
   /* ============================================================
-     IMAGE PICKER
+     IMAGE PICKER (CAMERA & GALLERY)
   ============================================================ */
-  Future<void> _pickImage() async {
+  Future<void> _pickFromGallery() async {
     final picked = await _picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 70,
     );
 
-    if (picked != null) {
-      setState(() {
-        _image = File(picked.path);
-      });
+    if (picked != null && mounted) {
+      setState(() => _image = File(picked.path));
     }
   }
 
+  Future<void> _pickFromCamera() async {
+    final picked = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 70,
+    );
+
+    if (picked != null && mounted) {
+      setState(() => _image = File(picked.path));
+    }
+  }
+
+  void _showPickImageSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Ambil Foto'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickFromCamera();
+                },
+              ),
+              ListTile(
+                title: const Text('Pilih dari Galeri'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickFromGallery();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _removeImage() {
-    setState(() {
-      _image = null;
-    });
+    setState(() => _image = null);
   }
 
   /* ============================================================
@@ -75,13 +112,11 @@ class _ReportLostScreenState extends State<ReportLostScreen> {
     try {
       setState(() => _isLoading = true);
 
-      // 1️⃣ Upload image ke Supabase
       final imageUrl = await StorageService.instance.uploadImage(
         file: _image!,
-        folder: 'images',
+        folder: 'lost_items',
       );
 
-      // 2️⃣ Simpan data ke Firestore
       await FirestoreService.instance.createLostReport(
         name: _nameController.text.trim(),
         category: _selectedCategory,
@@ -96,13 +131,13 @@ class _ReportLostScreenState extends State<ReportLostScreen> {
         const SnackBar(content: Text('Laporan berhasil dikirim')),
       );
 
-      context.pop(); // kembali ke Home
+      context.pop();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Gagal submit: $e')),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -112,11 +147,16 @@ class _ReportLostScreenState extends State<ReportLostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Warna.grey,
 
       /// ================= APP BAR =================
       appBar: AppBar(
-        title: const Text('Form Laporkan Hilang'),
+        backgroundColor: Warna.white,
+        elevation: 0,
+        title: const Text(
+          'Form Laporkan Hilang',
+          style: TextStyle(color: Colors.black),
+        ),
         leading: IconButton(
           onPressed: () => context.pop(),
           icon: Image.asset(
@@ -129,146 +169,161 @@ class _ReportLostScreenState extends State<ReportLostScreen> {
       /// ================= BODY =================
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            /// ================= IMAGE UPLOAD =================
-            Container(
-              height: 180,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+
+        /// 🔽 FRAME PUTIH FORM
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 12,
+                offset: Offset(0, 4),
               ),
-              child: Stack(
-                children: [
-                  Center(
-                    child: _image == null
-                        ? GestureDetector(
-                            onTap: _pickImage,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Image.asset(
-                                  'assets/image/icon/upload.png',
-                                  width: 36,
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Upload Your Photos',
-                                  style: TextStyle(
-                                    color: Warna.blue,
-                                    fontWeight: FontWeight.w500,
+            ],
+          ),
+          child: Column(
+            children: [
+              /// ================= IMAGE =================
+              GestureDetector(
+                onTap: _showPickImageSheet,
+                child: Container(
+                  height: 180,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Stack(
+                    children: [
+                      Center(
+                        child: _image == null
+                            ? Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset(
+                                    'assets/image/icon/upload.png',
+                                    width: 36,
                                   ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Tambah Foto (Wajib)',
+                                    style: TextStyle(
+                                      color: Warna.blue,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Image.file(
+                                  _image!,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
                                 ),
-                              ],
-                            ),
-                          )
-                        : ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.file(
-                              _image!,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
+                              ),
+                      ),
+                      if (_image != null)
+                        Positioned(
+                          bottom: 12,
+                          right: 12,
+                          child: GestureDetector(
+                            onTap: _removeImage,
+                            child: Image.asset(
+                              'assets/image/icon/delete.png',
+                              width: 22,
                             ),
                           ),
+                        ),
+                    ],
                   ),
-                  if (_image != null)
-                    Positioned(
-                      bottom: 12,
-                      right: 12,
-                      child: GestureDetector(
-                        onTap: _removeImage,
-                        child: Image.asset(
-                          'assets/image/icon/delete.png',
-                          width: 22,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              _inputLabel('Nama Barang'),
+              _textField(_nameController, 'Contoh: Baju Hitam'),
+
+              _inputLabel('Lokasi Terakhir'),
+              _textField(
+                _locationController,
+                'Contoh: Kamar mandi lantai 1',
+              ),
+
+              _inputLabel('Deskripsi Barang'),
+              _textArea(
+                _descController,
+                'Ciri-ciri barang secara detail',
+              ),
+
+              _inputLabel('Kategori'),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: categories.map((cat) {
+                  final isActive = _selectedCategory == cat;
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      _selectedCategory = cat;
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isActive ? Warna.blue : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color:
+                              isActive ? Warna.blue : Colors.grey.shade300,
+                        ),
+                      ),
+                      child: Text(
+                        cat,
+                        style: TextStyle(
+                          color: isActive ? Colors.white : Colors.black,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 12,
                         ),
                       ),
                     ),
-                ],
+                  );
+                }).toList(),
               ),
-            ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 24),
 
-            _inputLabel('Nama Barang'),
-            _textField(_nameController, 'Contoh: Baju Hitam'),
-
-            _inputLabel('Lokasi Terakhir'),
-            _textField(
-                _locationController, 'Contoh: Kamar mandi lantai 1'),
-
-            _inputLabel('Deskripsi Barang'),
-            _textArea(_descController, 'Ciri-ciri barang secara detail'),
-
-            _inputLabel('Kategori'),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: categories.map((cat) {
-                final isActive = _selectedCategory == cat;
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedCategory = cat;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isActive ? Warna.blue : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isActive
-                            ? Warna.blue
-                            : Colors.grey.shade300,
-                      ),
-                    ),
-                    child: Text(
-                      cat,
-                      style: TextStyle(
-                        color:
-                            isActive ? Colors.white : Colors.black,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 12,
-                      ),
+              /// ================= SUBMIT =================
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _submitReport,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Warna.blue,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                );
-              }).toList(),
-            ),
-
-            const SizedBox(height: 24),
-
-            /// ================= SUBMIT BUTTON =================
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _submitReport,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Warna.blue,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Submit'),
                 ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(
-                        color: Colors.white,
-                      )
-                    : const Text('Submit'),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   /* ============================================================
-     HELPER WIDGETS
+     HELPERS
   ============================================================ */
   Widget _inputLabel(String text) {
     return Padding(
@@ -279,6 +334,7 @@ class _ReportLostScreenState extends State<ReportLostScreen> {
           text,
           style: const TextStyle(
             fontSize: 12,
+            color: Warna.blue,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -292,7 +348,7 @@ class _ReportLostScreenState extends State<ReportLostScreen> {
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: Colors.grey.shade100,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -308,7 +364,7 @@ class _ReportLostScreenState extends State<ReportLostScreen> {
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: Colors.grey.shade100,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,

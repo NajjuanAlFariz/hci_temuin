@@ -9,6 +9,7 @@ import '../features/home/home_screen.dart';
 import '../features/report/report_found_screen.dart';
 import '../features/report/report_lost_screen.dart';
 import '../features/category/category_screen.dart';
+import '../features/profile/profile_screen.dart';
 
 class AppRouter {
   static final GoRouter router = GoRouter(
@@ -55,6 +56,10 @@ class AppRouter {
       GoRoute(
         path: '/kategori',
         builder: (context, state) => const CategoryScreen(),
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (context, state) => const ProfileScreen(),
       ),
     ],
   );

@@ -5,7 +5,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/navbar.dart';
 import '../../utils/category_icon_mapper.dart';
 import '../../utils/time_ago.dart';
-import '../../widgets/report_detail_dialog.dart'; // ⬅️ POP UP
+import '../../widgets/report_detail_dialog.dart'; 
 
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
@@ -23,8 +23,6 @@ class _CategoryScreenState extends State<CategoryScreen> {
     'Elektronik',
     'Alat Tulis',
     'Alat Makan',
-    'Aksesoris',
-    'Lainnya',
   ];
 
   @override

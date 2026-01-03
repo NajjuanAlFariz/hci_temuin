@@ -6,12 +6,11 @@ import '../../theme/app_colors.dart';
 import '../../widgets/navbar.dart';
 import '../../widgets/upload_report_section.dart';
 import '../../widgets/report_detail_bottom_sheet.dart';
+import '../../widgets/home_top_navbar.dart';
 import '../../utils/category_icon_mapper.dart';
 import '../../utils/time_ago.dart';
 
-/// ============================================================
-/// HOME SCREEN
-/// ============================================================
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -19,32 +18,56 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-      appBar: AppBar(
-        title: const Text('Temuin'),
-      ),
-      body: SingleChildScrollView(
+
+body: Column(
+  children: [
+    const HomeTopNavbar(),
+    Expanded(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            _StatCardRow(),
-            SizedBox(height: 20),
-            UploadReportSection(),
-            SizedBox(height: 24),
-            _LatestHeader(),
-            SizedBox(height: 12),
-            LatestReports(),
+          children: [
+            const _StatCardRow(),
+            const SizedBox(height: 20),
+
+            const UploadReportSection(),
+            const SizedBox(height: 24),
+
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFAFA),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  _LatestHeader(),
+                  SizedBox(height: 12),
+                  LatestReports(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
+    ),
+  ],
+),
+
       bottomNavigationBar: const Navbar(currentIndex: 0),
     );
   }
 }
 
-/// ============================================================
-/// STAT CARD ROW
-/// ============================================================
 class _StatCardRow extends StatelessWidget {
   const _StatCardRow();
 
@@ -60,9 +83,6 @@ class _StatCardRow extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// STAT CARD - BARANG HILANG
-/// ============================================================
 class LostItemStatCard extends StatelessWidget {
   const LostItemStatCard({super.key});
 
@@ -85,9 +105,6 @@ class LostItemStatCard extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// STAT CARD - BARANG TEMUAN
-/// ============================================================
 class FoundItemStatCard extends StatelessWidget {
   const FoundItemStatCard({super.key});
 
@@ -111,9 +128,7 @@ class FoundItemStatCard extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// STAT CARD UI
-/// ============================================================
+
 class _StatCard extends StatelessWidget {
   final String title;
   final int count;
@@ -175,9 +190,7 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// LAPORAN TERBARU (HILANG + TEMUAN + POPUP DETAIL)
-/// ============================================================
+
 class LatestReports extends StatelessWidget {
   const LatestReports({super.key});
 
@@ -205,19 +218,18 @@ class LatestReports extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final lostReports = lostSnap.data!.docs.map((d) {
-              final data = d.data() as Map<String, dynamic>;
-              data['type'] = 'lost';
-              return data;
-            });
-
-            final foundReports = foundSnap.data!.docs.map((d) {
-              final data = d.data() as Map<String, dynamic>;
-              data['type'] = 'found';
-              return data;
-            });
-
-            final reports = [...lostReports, ...foundReports];
+            final reports = [
+              ...lostSnap.data!.docs.map((d) {
+                final data = d.data() as Map<String, dynamic>;
+                data['type'] = 'lost';
+                return data;
+              }),
+              ...foundSnap.data!.docs.map((d) {
+                final data = d.data() as Map<String, dynamic>;
+                data['type'] = 'found';
+                return data;
+              }),
+            ];
 
             if (reports.isEmpty) {
               return const Text('Belum ada laporan');
@@ -243,7 +255,6 @@ class LatestReports extends StatelessWidget {
                     showModalBottomSheet(
                       context: context,
                       isScrollControlled: true,
-                      backgroundColor: Colors.white,
                       shape: const RoundedRectangleBorder(
                         borderRadius:
                             BorderRadius.vertical(top: Radius.circular(24)),
@@ -261,7 +272,6 @@ class LatestReports extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        /// ICON
                         Container(
                           width: 48,
                           height: 48,
@@ -270,15 +280,10 @@ class LatestReports extends StatelessWidget {
                             color: Colors.black,
                             shape: BoxShape.circle,
                           ),
-                          child: CategoryIconMapper.buildIcon(
-                            category,
-                            size: 28,
-                          ),
+                          child:
+                              CategoryIconMapper.buildIcon(category, size: 28),
                         ),
-
                         const SizedBox(width: 12),
-
-                        /// TEXT
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,9 +328,6 @@ class LatestReports extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// HEADER LAPORAN TERBARU
-/// ============================================================
 class _LatestHeader extends StatelessWidget {
   const _LatestHeader();
 
@@ -339,9 +341,7 @@ class _LatestHeader extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         TextButton(
-          onPressed: () {
-            context.go('/kategori');
-          },
+          onPressed: () => context.go('/kategori'),
           child: const Text('Lihat Semua'),
         ),
       ],

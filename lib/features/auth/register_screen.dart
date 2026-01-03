@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../theme/app_colors.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -18,33 +21,129 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _isLoading = false;
 
-  Future<void> _register() async {
-    if (_passwordController.text != _confirmController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password tidak sama')),
-      );
+  /* ============================================================
+     REGISTER MANUAL (EMAIL + PASSWORD)
+  ============================================================ */
+  Future<void> _registerManual() async {
+    final name = _usernameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final confirm = _confirmController.text.trim();
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      _showError('Semua field wajib diisi');
+      return;
+    }
+
+    if (password != confirm) {
+      _showError('Password tidak sama');
+      return;
+    }
+
+    if (!email.endsWith('@students.paramadina.ac.id')) {
+      _showError('Gunakan email mahasiswa @students.paramadina.ac.id');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+      final cred =
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
       );
+
+      final user = cred.user;
+      if (user == null) throw Exception('User tidak ditemukan');
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'name': name,
+        'email': email,
+        'provider': 'email',
+        'created_at': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
       context.go('/home');
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Register gagal')),
-      );
+      _showError(e.message ?? 'Register gagal');
+    } catch (e) {
+      _showError('Error: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  /* ============================================================
+     REGISTER DENGAN GOOGLE
+  ============================================================ */
+  Future<void> _registerWithGoogle() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        _showError('Login Google dibatalkan');
+        return;
+      }
+
+      /// 🔒 VALIDASI DOMAIN EMAIL
+      if (!googleUser.email.endsWith('@students.paramadina.ac.id')) {
+        await GoogleSignIn().signOut();
+        _showError('Gunakan akun mahasiswa Paramadina');
+        return;
+      }
+
+      final googleAuth = await googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCred =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+
+      final user = userCred.user;
+      if (user == null) throw Exception('User tidak ditemukan');
+
+      final userRef =
+          FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+      final snapshot = await userRef.get();
+
+      /// SIMPAN KE FIRESTORE JIKA BELUM ADA
+      if (!snapshot.exists) {
+        await userRef.set({
+          'name': user.displayName ??
+              user.email!.split('@').first,
+          'email': user.email,
+          'provider': 'google',
+          'created_at': FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (!mounted) return;
+      context.go('/home');
+    } catch (e) {
+      _showError('Login Google gagal: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /* ============================================================
+     UI
+  ============================================================ */
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -57,22 +156,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
               Image.asset(
                 'assets/image/logo_temuin.png',
                 height: 180,
-                fit: BoxFit.contain,
               ),
+
               Container(
                 padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 12,
-                    ),
+                    BoxShadow(color: Colors.black12, blurRadius: 12),
                   ],
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
                       'Sign Up',
@@ -82,71 +177,73 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         color: Warna.blue,
                       ),
                     ),
+                    const SizedBox(height: 20),
 
                     TextField(
                       controller: _usernameController,
-                      decoration: const InputDecoration(
-                        hintText: 'Username',
-                      ),
+                      decoration:
+                          const InputDecoration(hintText: 'Nama Lengkap'),
                     ),
+                    const SizedBox(height: 12),
 
                     TextField(
                       controller: _emailController,
                       decoration: const InputDecoration(
-                        hintText: 'Email',
+                        hintText: 'Email Mahasiswa',
                       ),
                     ),
+                    const SizedBox(height: 12),
 
                     TextField(
                       controller: _passwordController,
                       obscureText: true,
-                      decoration: const InputDecoration(
-                        hintText: 'Password',
-                      ),
+                      decoration:
+                          const InputDecoration(hintText: 'Password'),
                     ),
+                    const SizedBox(height: 12),
 
                     TextField(
                       controller: _confirmController,
                       obscureText: true,
                       decoration: const InputDecoration(
-                        hintText: 'Confirm Password',
-                      ),
+                          hintText: 'Confirm Password'),
                     ),
 
                     const SizedBox(height: 20),
+
                     SizedBox(
                       width: double.infinity,
                       height: 48,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _register,
+                        onPressed:
+                            _isLoading ? null : _registerManual,
                         child: _isLoading
                             ? const CircularProgressIndicator(
-                                color: Colors.white,
-                              )
+                                color: Colors.white)
                             : const Text('Sign Up'),
                       ),
                     ),
 
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Login With',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    const SizedBox(height: 12),
+                    const Text('atau', style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 12),
 
-                    const SizedBox(height: 6),
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 48),
+                        minimumSize:
+                            const Size(double.infinity, 48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
                         ),
                       ),
-                      onPressed: () {},
+                      onPressed:
+                          _isLoading ? null : _registerWithGoogle,
                       icon: Image.asset(
                         'assets/image/icon/google.png',
                         height: 20,
                       ),
-                      label: const Text('Google'),
+                      label:
+                          const Text('Daftar dengan Google'),
                     ),
 
                     const SizedBox(height: 16),

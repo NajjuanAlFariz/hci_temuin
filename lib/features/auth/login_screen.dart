@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
 import '../../theme/app_colors.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,26 +19,126 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
 
-  Future<void> _login() async {
+  bool _isStudentEmail(String email) {
+    return email.endsWith('@students.paramadina.ac.id');
+  }
+
+  /// ================= LOGIN MANUAL =================
+  Future<void> _loginManual() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      _showError('Email dan password wajib diisi');
+      return;
+    }
+
+    if (!_isStudentEmail(email)) {
+      _showError(
+        'Gunakan email mahasiswa (@students.paramadina.ac.id)',
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+      final credential =
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
       );
+
+      final user = credential.user;
+      if (user == null) throw Exception('User tidak ditemukan');
+
+      await _ensureUserFirestore(user);
 
       if (!mounted) return;
       context.go('/home');
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Login gagal')),
-      );
+      _showError(e.message ?? 'Login gagal');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  /// ================= LOGIN GOOGLE =================
+  Future<void> _loginWithGoogle() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final googleSignIn = GoogleSignIn();
+      final googleUser = await googleSignIn.signIn();
+
+      if (googleUser == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
+      final email = googleUser.email;
+
+      if (!_isStudentEmail(email)) {
+        await googleSignIn.signOut();
+        throw Exception(
+          'Gunakan akun mahasiswa (@students.paramadina.ac.id)',
+        );
+      }
+
+      final googleAuth = await googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+
+      final user = userCredential.user;
+      if (user == null) throw Exception('User tidak ditemukan');
+
+      await _ensureUserFirestore(
+        user,
+        displayName: googleUser.displayName,
+      );
+
+      if (!mounted) return;
+      context.go('/home');
+    } catch (e) {
+      if (!mounted) return;
+      _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// ================= FIRESTORE USER =================
+  Future<void> _ensureUserFirestore(
+    User user, {
+    String? displayName,
+  }) async {
+    final userDoc =
+        FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+    final snapshot = await userDoc.get();
+
+    if (!snapshot.exists) {
+      await userDoc.set({
+        'name': displayName ?? user.email!.split('@').first,
+        'email': user.email,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
+  }
+
+  /// ================= UI =================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -45,11 +148,13 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             children: [
+
               Image.asset(
                 'assets/image/logo_temuin.png',
-                height: 200,
-                fit: BoxFit.contain,
+                height: 180,
               ),
+
+
               Container(
                 padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
@@ -63,7 +168,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
                       'Login',
@@ -73,14 +177,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Warna.blue,
                       ),
                     ),
+
                     const SizedBox(height: 24),
 
                     TextField(
                       controller: _emailController,
                       decoration: const InputDecoration(
-                        hintText: 'Email',
+                        hintText: 'Email mahasiswa',
                       ),
                     ),
+
                     const SizedBox(height: 14),
 
                     TextField(
@@ -91,11 +197,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 8),
+                    /// 🔐 FORGOT PASSWORD
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: () =>  context.go('/forgot-password'),
+                        onPressed: () {
+                          context.go('/forgot-password');
+                        },
                         child: const Text(
                           'Forgot password?',
                           style: TextStyle(fontSize: 12),
@@ -104,46 +212,53 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
 
                     const SizedBox(height: 8),
+
                     SizedBox(
                       width: double.infinity,
                       height: 48,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _login,
+                        onPressed:
+                            _isLoading ? null : _loginManual,
                         child: _isLoading
                             ? const CircularProgressIndicator(
                                 color: Colors.white,
                               )
-                            : const Text('Get Started'),
+                            : const Text('Login'),
                       ),
                     ),
 
                     const SizedBox(height: 16),
+
                     const Text(
-                      'Login With',
+                      'atau',
                       style: TextStyle(fontSize: 12),
                     ),
 
-                    const SizedBox(height: 6),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
+                    const SizedBox(height: 12),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        icon: Image.asset(
+                          'assets/image/icon/google.png',
+                          height: 20,
                         ),
+                        label: const Text(
+                          'Login dengan Google',
+                        ),
+                        onPressed:
+                            _isLoading ? null : _loginWithGoogle,
                       ),
-                      onPressed: () {},
-                      icon: Image.asset(
-                        'assets/image/icon/google.png',
-                        height: 20,
-                      ),
-                      label: const Text('Google'),
                     ),
 
                     const SizedBox(height: 16),
+
                     TextButton(
-                      onPressed: () => context.go('/register'),
+                      onPressed: () =>
+                          context.go('/register'),
                       child: const Text(
-                        "Don't have an account? Sign up now",
+                        "Belum punya akun? Daftar",
                         style: TextStyle(fontSize: 12),
                       ),
                     ),

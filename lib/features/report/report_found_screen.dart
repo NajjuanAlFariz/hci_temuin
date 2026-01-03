@@ -33,22 +33,70 @@ class _ReportFoundScreenState extends State<ReportFoundScreen> {
 
   final ImagePicker _picker = ImagePicker();
 
-  Future<void> _pickImage() async {
+  /* ============================================================
+     IMAGE PICKER (CAMERA & GALLERY)
+  ============================================================ */
+  Future<void> _pickFromGallery() async {
     final picked = await _picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 70,
     );
-    if (picked != null) {
-      setState(() {
-        _image = File(picked.path);
-      });
+
+    if (picked != null && mounted) {
+      setState(() => _image = File(picked.path));
     }
+  }
+
+  Future<void> _pickFromCamera() async {
+    final picked = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 70,
+    );
+
+    if (picked != null && mounted) {
+      setState(() => _image = File(picked.path));
+    }
+  }
+
+  void _showPickImageSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Ambil Foto'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickFromCamera();
+                },
+              ),
+              ListTile(
+                title: const Text('Pilih dari Galeri'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickFromGallery();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _removeImage() {
     setState(() => _image = null);
   }
 
+  /* ============================================================
+     SUBMIT
+  ============================================================ */
   Future<void> _submit() async {
     if (_nameController.text.isEmpty ||
         _locationController.text.isEmpty) {
@@ -81,24 +129,31 @@ class _ReportFoundScreenState extends State<ReportFoundScreen> {
     } catch (e) {
       _showError(e.toString());
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /* ============================================================
+     UI
+  ============================================================ */
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Warna.grey,
 
       /// ================= APP BAR =================
       appBar: AppBar(
-        title: const Text('Form Laporkan Temuan'),
+        backgroundColor: Warna.white,
+        elevation: 0,
+        title: const Text(
+          'Form Laporkan Temuan',
+          style: TextStyle(color: Colors.black),
+        ),
         leading: IconButton(
           onPressed: () => context.pop(),
           icon: Image.asset(
@@ -111,143 +166,154 @@ class _ReportFoundScreenState extends State<ReportFoundScreen> {
       /// ================= BODY =================
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            /// ================= UPLOAD IMAGE (OPSIONAL) =================
-            Container(
-              height: 180,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 12,
+                offset: Offset(0, 4),
               ),
-              child: Stack(
-                children: [
-                  Center(
-                    child: _image == null
-                        ? GestureDetector(
-                            onTap: _pickImage,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Image.asset(
-                                  'assets/image/icon/upload.png',
-                                  width: 36,
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Upload Foto (Opsional)',
-                                  style: TextStyle(
-                                    color: Warna.blue,
-                                    fontWeight: FontWeight.w500,
+            ],
+          ),
+          child: Column(
+            children: [
+              /// ================= IMAGE =================
+              GestureDetector(
+                onTap: _showPickImageSheet,
+                child: Container(
+                  height: 180,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Stack(
+                    children: [
+                      Center(
+                        child: _image == null
+                            ? Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset(
+                                    'assets/image/icon/upload.png',
+                                    width: 36,
                                   ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Tambah Foto (Opsional)',
+                                    style: TextStyle(
+                                      color: Warna.blue,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Image.file(
+                                  _image!,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
                                 ),
-                              ],
-                            ),
-                          )
-                        : ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.file(
-                              _image!,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
+                              ),
+                      ),
+                      if (_image != null)
+                        Positioned(
+                          bottom: 12,
+                          right: 12,
+                          child: GestureDetector(
+                            onTap: _removeImage,
+                            child: Image.asset(
+                              'assets/image/icon/delete.png',
+                              width: 22,
                             ),
                           ),
+                        ),
+                    ],
                   ),
-                  if (_image != null)
-                    Positioned(
-                      bottom: 12,
-                      right: 12,
-                      child: GestureDetector(
-                        onTap: _removeImage,
-                        child: Image.asset(
-                          'assets/image/icon/delete.png',
-                          width: 22,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              _inputLabel('Nama Barang'),
+              _textField(_nameController, 'Contoh: Jaket Hitam'),
+
+              _inputLabel('Lokasi Ditemukan'),
+              _textField(
+                _locationController,
+                'Contoh: Meja kantin',
+              ),
+
+              _inputLabel('Kategori'),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: categories.map((cat) {
+                  final isActive = _selectedCategory == cat;
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      _selectedCategory = cat;
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isActive ? Warna.blue : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color:
+                              isActive ? Warna.blue : Colors.grey.shade300,
+                        ),
+                      ),
+                      child: Text(
+                        cat,
+                        style: TextStyle(
+                          color: isActive ? Colors.white : Colors.black,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 12,
                         ),
                       ),
                     ),
-                ],
+                  );
+                }).toList(),
               ),
-            ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 28),
 
-            _inputLabel('Nama Barang'),
-            _textField(_nameController, 'Contoh: Jaket Hitam'),
-
-            _inputLabel('Lokasi Ditemukan'),
-            _textField(
-              _locationController,
-              'Contoh: Meja kantin',
-            ),
-
-            _inputLabel('Kategori'),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: categories.map((cat) {
-                final isActive = _selectedCategory == cat;
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedCategory = cat;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isActive ? Warna.blue : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color:
-                            isActive ? Warna.blue : Colors.grey.shade300,
-                      ),
-                    ),
-                    child: Text(
-                      cat,
-                      style: TextStyle(
-                        color:
-                            isActive ? Colors.white : Colors.black,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 12,
-                      ),
+              /// ================= SUBMIT =================
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Warna.blue,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                );
-              }).toList(),
-            ),
-
-            const SizedBox(height: 28),
-
-            /// ================= SUBMIT =================
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Warna.blue,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  child: _loading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Submit'),
                 ),
-                child: _loading
-                    ? const CircularProgressIndicator(
-                        color: Colors.white,
-                      )
-                    : const Text('Submit'),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// ================= WIDGET HELPER =================
+  /* ============================================================
+     HELPERS
+  ============================================================ */
   Widget _inputLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6, top: 14),
@@ -257,6 +323,7 @@ class _ReportFoundScreenState extends State<ReportFoundScreen> {
           text,
           style: const TextStyle(
             fontSize: 12,
+            color: Warna.blue,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -270,7 +337,7 @@ class _ReportFoundScreenState extends State<ReportFoundScreen> {
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: Colors.grey.shade100,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,

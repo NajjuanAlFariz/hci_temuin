@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "968431767162-6p1frr27fkks76akn9tkhfnnposq3drk.apps.googleusercontent.com",
+          "client_id": "968431767162-l9j292apk47ng08ie39m3418bjn7naou.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "temuin.barang_hilang.com",
-            "certificate_hash": "b3943652a8d82c9c0633b84d6eb9ac1bc3508c81"
+            "certificate_hash": "60b2e6fd6db9abdda8d81346bbeac56a18000bcf"
           }
         },
         {

@@ -1,0 +1,4 @@
+enum ReportType {
+  lost,
+  found,
+}

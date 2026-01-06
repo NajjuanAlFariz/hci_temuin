@@ -5,7 +5,8 @@ import '../../theme/app_colors.dart';
 import '../../widgets/navbar.dart';
 import '../../utils/category_icon_mapper.dart';
 import '../../utils/time_ago.dart';
-import '../../widgets/report_detail_dialog.dart'; 
+import '../../widgets/report_detail_dialog.dart';
+import '../../utils/report_type.dart';
 
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
@@ -39,37 +40,41 @@ class _CategoryScreenState extends State<CategoryScreen> {
           }
 
           return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('found_items')
-                .snapshots(),
+            stream:
+                FirebaseFirestore.instance.collection('found_items').snapshots(),
             builder: (context, foundSnap) {
               if (!foundSnap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
 
               /// ================= MERGE DATA =================
-              final lostItems = lostSnap.data!.docs.map((d) {
-                final data = d.data() as Map<String, dynamic>;
-                data['type'] = 'lost';
-                return data;
+              final lostItems = lostSnap.data!.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return {
+                  ...data,
+                  'type': 'lost',
+                  'doc_id': doc.id, // 🔥 PENTING
+                };
               });
 
-              final foundItems = foundSnap.data!.docs.map((d) {
-                final data = d.data() as Map<String, dynamic>;
-                data['type'] = 'found';
-                return data;
+              final foundItems = foundSnap.data!.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return {
+                  ...data,
+                  'type': 'found',
+                  'doc_id': doc.id, // 🔥 PENTING
+                };
               });
 
               final allItems = [...lostItems, ...foundItems];
 
               final filteredItems = selectedCategory == 'Semua'
                   ? allItems.toList()
-                  : allItems.where((e) {
-                      return e['category']
-                              .toString()
-                              .toLowerCase() ==
-                          selectedCategory.toLowerCase();
-                    }).toList();
+                  : allItems
+                      .where((e) =>
+                          e['category']?.toString().toLowerCase() ==
+                          selectedCategory.toLowerCase())
+                      .toList();
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -113,7 +118,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                         crossAxisCount: 2,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
-                        childAspectRatio: 0.68, // ANTI OVERFLOW
+                        childAspectRatio: 0.68,
                       ),
                       itemBuilder: (_, i) {
                         return ReportItemCard(
@@ -135,7 +140,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
 }
 
 /// ============================================================
-/// ITEM CARD (TAP → POP UP DETAIL)
+/// ITEM CARD
 /// ============================================================
 class ReportItemCard extends StatelessWidget {
   final Map<String, dynamic> data;
@@ -145,10 +150,12 @@ class ReportItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isLost = data['type'] == 'lost';
-    final String name = data['name'];
-    final String category = data['category'];
-    final String location = data['location'];
+
+    final String name = data['name'] ?? '-';
+    final String category = data['category'] ?? '-';
+    final String location = data['location'] ?? '-';
     final String? imageUrl = data['image_url'];
+    final String reportId = data['doc_id']; // 🔥 FIX
     final Timestamp? createdAt = data['created_at'];
 
     final String timeText =
@@ -161,6 +168,7 @@ class ReportItemCard extends StatelessWidget {
           builder: (_) => ReportDetailDialog(
             data: data,
             type: isLost ? ReportType.lost : ReportType.found,
+            reportId: reportId, // ✅ AMAN
           ),
         );
       },
@@ -179,15 +187,13 @@ class ReportItemCard extends StatelessWidget {
                 height: 110,
                 width: double.infinity,
                 child: isLost && imageUrl != null
-                    ? Image.network(imageUrl, fit: BoxFit.cover)
-                    : Container(
-                        color: Warna.blue,
-                        alignment: Alignment.center,
-                        child: CategoryIconMapper.buildIcon(
-                          category,
-                          size: 44,
-                        ),
-                      ),
+                    ? Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            _fallbackIcon(category),
+                      )
+                    : _fallbackIcon(category),
               ),
             ),
 
@@ -198,34 +204,27 @@ class ReportItemCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    /// NAME
                     Text(
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
 
                     const SizedBox(height: 4),
 
-                    /// STATUS + TIME
                     Text(
                       isLost
-                          ? 'Hilang • $timeText'
-                          : 'Ditemukan • $timeText',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                          ? 'Hilang - $timeText'
+                          : 'Ditemukan - $timeText',
                       style: TextStyle(
                         fontSize: 12,
                         color: isLost ? Colors.red : Colors.green,
                       ),
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
 
-                    /// LOCATION
                     Text(
                       location,
                       maxLines: 2,
@@ -238,7 +237,6 @@ class ReportItemCard extends StatelessWidget {
 
                     const Spacer(),
 
-                    /// BADGE
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -250,10 +248,9 @@ class ReportItemCard extends StatelessWidget {
                       ),
                       alignment: Alignment.center,
                       child: Text(
-                        isLost ? 'Di cari' : 'Ditemukan',
+                        isLost ? 'Dicari' : 'Ditemukan',
                         style: TextStyle(
-                          color:
-                              isLost ? Colors.red : Colors.green,
+                          color: isLost ? Colors.red : Colors.green,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -265,6 +262,17 @@ class ReportItemCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _fallbackIcon(String category) {
+    return Container(
+      color: Warna.blue,
+      alignment: Alignment.center,
+      child: CategoryIconMapper.buildIcon(
+        category,
+        size: 44,
       ),
     );
   }

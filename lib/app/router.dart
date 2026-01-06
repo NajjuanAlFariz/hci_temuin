@@ -10,6 +10,9 @@ import '../features/report/report_found_screen.dart';
 import '../features/report/report_lost_screen.dart';
 import '../features/category/category_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/notification/notification_screen.dart';
+import '../features/chat/chat_home_screen.dart';
+import '../features/chat/chat_detail_screen.dart';
 
 class AppRouter {
   static final GoRouter router = GoRouter(
@@ -19,6 +22,7 @@ class AppRouter {
         path: '/',
         builder: (context, state) => const SplashScreen(),
       ),
+
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
@@ -41,10 +45,12 @@ class AppRouter {
           return ResetPasswordScreen(oobCode: oobCode);
         },
       ),
+
       GoRoute(
         path: '/home',
         builder: (context, state) => const HomeScreen(),
       ),
+
       GoRoute(
         path: '/report-lost',
         builder: (context, state) => const ReportLostScreen(),
@@ -53,13 +59,37 @@ class AppRouter {
         path: '/report-found',
         builder: (context, state) => const ReportFoundScreen(),
       ),
+
       GoRoute(
         path: '/kategori',
         builder: (context, state) => const CategoryScreen(),
       ),
+
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+
+      GoRoute(
+        path: '/notification',
+        builder: (context, state) => const NotificationScreen(),
+      ),
+
+      GoRoute(
+        path: '/chat',
+        builder: (context, state) => const ChatHomeScreen(),
+      ),
+
+      GoRoute(
+        path: '/chat/detail',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+
+          return ChatDetailScreen(
+            chatId: extra['chatId'],
+            partnerName: extra['partnerName'],
+          );
+        },
       ),
     ],
   );

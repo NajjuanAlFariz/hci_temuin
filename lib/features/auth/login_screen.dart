@@ -17,13 +17,17 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+
   bool _isLoading = false;
 
   bool _isStudentEmail(String email) {
     return email.endsWith('@students.paramadina.ac.id');
   }
 
-  /// ================= LOGIN MANUAL =================
+  /* ============================================================
+     LOGIN MANUAL
+  ============================================================ */
   Future<void> _loginManual() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -63,57 +67,65 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// ================= LOGIN GOOGLE =================
-  Future<void> _loginWithGoogle() async {
-    setState(() => _isLoading = true);
+  /* ============================================================
+     LOGIN GOOGLE (SESSION RESET ✔)
+  ============================================================ */
+Future<void> _loginWithGoogle() async {
+  setState(() => _isLoading = true);
 
-    try {
-      final googleSignIn = GoogleSignIn();
-      final googleUser = await googleSignIn.signIn();
+  try {
+    /// ✅ AMAN: reset session TANPA disconnect
+    await _googleSignIn.signOut();
 
-      if (googleUser == null) {
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
-
-      final email = googleUser.email;
-
-      if (!_isStudentEmail(email)) {
-        await googleSignIn.signOut();
-        throw Exception(
-          'Gunakan akun mahasiswa (@students.paramadina.ac.id)',
-        );
-      }
-
-      final googleAuth = await googleUser.authentication;
-
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final userCredential =
-          await FirebaseAuth.instance.signInWithCredential(credential);
-
-      final user = userCredential.user;
-      if (user == null) throw Exception('User tidak ditemukan');
-
-      await _ensureUserFirestore(
-        user,
-        displayName: googleUser.displayName,
-      );
-
-      if (!mounted) return;
-      context.go('/home');
-    } catch (e) {
-      if (!mounted) return;
-      _showError(e.toString());
-    } finally {
+    final googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) {
       if (mounted) setState(() => _isLoading = false);
+      return;
     }
-  }
 
-  /// ================= FIRESTORE USER =================
+    final email = googleUser.email;
+
+    if (!_isStudentEmail(email)) {
+      await _googleSignIn.signOut();
+      throw Exception(
+        'Gunakan akun mahasiswa (@students.paramadina.ac.id)',
+      );
+    }
+
+    final googleAuth = await googleUser.authentication;
+
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    final userCredential =
+        await FirebaseAuth.instance.signInWithCredential(credential);
+
+    final user = userCredential.user;
+    if (user == null) throw Exception('User tidak ditemukan');
+
+    await _ensureUserFirestore(
+      user,
+      displayName: googleUser.displayName,
+    );
+
+    if (!mounted) return;
+    context.go('/home');
+  } catch (e) {
+    if (!mounted) return;
+    _showError(
+      e.toString().replaceAll('Exception: ', ''),
+    );
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
+  }
+}
+
+
+  /* ============================================================
+     FIRESTORE USER
+  ============================================================ */
   Future<void> _ensureUserFirestore(
     User user, {
     String? displayName,
@@ -138,7 +150,9 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// ================= UI =================
+  /* ============================================================
+     UI
+  ============================================================ */
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,12 +162,14 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             children: [
+              const SizedBox(height: 40),
 
               Image.asset(
                 'assets/image/logo_temuin.png',
                 height: 180,
               ),
 
+              const SizedBox(height: 24),
 
               Container(
                 padding: const EdgeInsets.all(32),
@@ -197,13 +213,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-                    /// 🔐 FORGOT PASSWORD
+                    /// FORGOT PASSWORD
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: () {
-                          context.go('/forgot-password');
-                        },
+                        onPressed: () =>
+                            context.go('/forgot-password'),
                         child: const Text(
                           'Forgot password?',
                           style: TextStyle(fontSize: 12),
@@ -229,10 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 16),
 
-                    const Text(
-                      'atau',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    const Text('atau'),
 
                     const SizedBox(height: 12),
 
@@ -244,9 +256,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           'assets/image/icon/google.png',
                           height: 20,
                         ),
-                        label: const Text(
-                          'Login dengan Google',
-                        ),
+                        label: const Text('Login dengan Google'),
                         onPressed:
                             _isLoading ? null : _loginWithGoogle,
                       ),
@@ -255,10 +265,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 16),
 
                     TextButton(
-                      onPressed: () =>
-                          context.go('/register'),
+                      onPressed: () => context.go('/register'),
                       child: const Text(
-                        "Belum punya akun? Daftar",
+                        'Belum punya akun? Daftar',
                         style: TextStyle(fontSize: 12),
                       ),
                     ),

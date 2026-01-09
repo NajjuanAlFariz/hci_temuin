@@ -17,21 +17,17 @@ class NotificationScreen extends StatefulWidget {
 class _NotificationScreenState extends State<NotificationScreen> {
   NotificationTab _activeTab = NotificationTab.all;
 
-  final _user = FirebaseAuth.instance.currentUser;
+  User? get _user => FirebaseAuth.instance.currentUser;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          onPressed: () {
-            /// ⬅️ BALIK KE HOME
-            context.go('/home');
-          },
+          onPressed: () => context.go('/home'),
           icon: Image.asset(
             'assets/image/icon/arrow-back.png',
             width: 22,
@@ -43,7 +39,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
         ),
         centerTitle: true,
       ),
-
       body: Column(
         children: [
           const SizedBox(height: 12),
@@ -64,7 +59,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
           const SizedBox(height: 12),
 
-          /// ================= LIST =================
           Expanded(
             child: _NotificationList(
               activeTab: _activeTab,
@@ -105,7 +99,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 }
 
 /// ============================================================
-/// NOTIFICATION LIST
+/// NOTIFICATION LIST (berdasarkan ownership_verifications)
 /// ============================================================
 class _NotificationList extends StatelessWidget {
   final NotificationTab activeTab;
@@ -122,69 +116,61 @@ class _NotificationList extends StatelessWidget {
       return const Center(child: Text('User belum login'));
     }
 
-    Query query = FirebaseFirestore.instance
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
         .collection('ownership_verifications')
         .where('target_user_id', isEqualTo: userId)
         .orderBy('created_at', descending: true);
 
-
-return StreamBuilder<QuerySnapshot>(
-  stream: FirebaseFirestore.instance
-      .collection('ownership_verifications')
-      .where('target_user_id', isEqualTo: userId)
-      .orderBy('created_at', descending: true)
-      .snapshots(),
-  builder: (_, snapshot) {
-    if (snapshot.connectionState == ConnectionState.waiting) {
-      return const Center(child: CircularProgressIndicator());
+    if (activeTab == NotificationTab.unread) {
+      query = query.where('read', isEqualTo: false);
+    } else if (activeTab == NotificationTab.history) {
+      query = query.where('read', isEqualTo: true);
     }
 
-    if (!snapshot.hasData) {
-      return const Center(child: Text('Tidak ada data'));
-    }
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: query.snapshots(),
+      builder: (_, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    final allDocs = snapshot.data!.docs;
+        if (snapshot.hasError) {
+          // Jika ini error index, biasanya Firestore kasih link index di message.
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Terjadi kesalahan:\n${snapshot.error}',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
 
-    final filteredDocs = allDocs.where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      final isRead = data['read'] == true;
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return const Center(child: Text('Tidak ada notifikasi'));
+        }
 
-      if (activeTab == NotificationTab.unread) {
-        return !isRead;
-      }
-
-      if (activeTab == NotificationTab.history) {
-        return isRead;
-      }
-
-      return true; // ALL
-    }).toList();
-
-    if (filteredDocs.isEmpty) {
-      return const Center(child: Text('Tidak ada notifikasi'));
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: filteredDocs.length,
-      itemBuilder: (_, i) {
-        final data = filteredDocs[i].data() as Map<String, dynamic>;
-        return _NotificationCard(
-          docId: filteredDocs[i].id,
-          data: data,
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: docs.length,
+          itemBuilder: (_, i) {
+            return _NotificationCard(
+              docId: docs[i].id,
+              data: docs[i].data(),
+            );
+          },
         );
       },
     );
-  },
-);
-
   }
 }
 
 /// ============================================================
-/// NOTIFICATION CARD
+/// NOTIFICATION CARD (stateful + loading + action)
 /// ============================================================
-class _NotificationCard extends StatelessWidget {
+class _NotificationCard extends StatefulWidget {
   final String docId;
   final Map<String, dynamic> data;
 
@@ -194,81 +180,135 @@ class _NotificationCard extends StatelessWidget {
   });
 
   @override
+  State<_NotificationCard> createState() => _NotificationCardState();
+}
+
+class _NotificationCardState extends State<_NotificationCard> {
+  bool _isLoading = false;
+
+  @override
   Widget build(BuildContext context) {
-    final isPending = data['status'] == 'pending';
+    final data = widget.data;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          /// HEADER
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const CircleAvatar(
-                radius: 20,
-                backgroundColor: Warna.blue,
-                child: Icon(Icons.person, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      data['requester_name'] ?? 'User',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Deskripsi: ${data['description']}',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+    final status = (data['status'] ?? '').toString();
+    final isPending = status == 'pending';
 
-          if (isPending) ...[
-            const SizedBox(height: 12),
+    final requesterName = (data['requester_name'] ?? 'User').toString();
+    final description =
+        data['description'] != null ? data['description'].toString() : '-';
 
-            /// ACTION BUTTON
+    return AbsorbPointer(
+      absorbing: _isLoading,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _actionButton(
-                    label: 'Tolak',
-                    color: Colors.red,
-                    onTap: () => _updateStatus(context, 'rejected'),
-                  ),
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.transparent,
+                  child: Image.asset('assets/image/profile_default.png'),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: _actionButton(
-                    label: 'Terima',
-                    color: Colors.green,
-                    onTap: () => _updateStatus(context, 'accepted'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        requesterName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Deskripsi Barang:',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Text(
+                          description,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
+
+            if (_isLoading) ...[
+              const SizedBox(height: 14),
+              const LinearProgressIndicator(minHeight: 3),
+            ],
+
+            if (isPending && !_isLoading) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _actionButton(
+                      label: 'Tolak',
+                      color: Colors.red,
+                      onTap: () => _handleDecision(accepted: false),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _actionButton(
+                      label: 'Terima',
+                      color: Colors.green,
+                      onTap: () => _handleDecision(accepted: true),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
+            if (!isPending) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Status: $status',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: status == 'accepted'
+                        ? Colors.green
+                        : (status == 'rejected' ? Colors.red : Colors.black54),
+                  ),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -293,28 +333,112 @@ class _NotificationCard extends StatelessWidget {
     );
   }
 
-  Future<void> _updateStatus(BuildContext context, String status) async {
-    await FirebaseFirestore.instance
-        .collection('ownership_verifications')
-        .doc(docId)
-        .update({
-      'status': status,
-      'read': true,
-    });
+  /// ============================================================
+  /// ACCEPT / REJECT + CREATE CHAT + NAVIGATE
+  /// (pakai field requester_user_id sesuai FirestoreService)
+  /// ============================================================
+  Future<void> _handleDecision({required bool accepted}) async {
+    if (_isLoading) return;
 
-    if (!context.mounted) return;
-
-    if (status == 'accepted') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Verifikasi diterima. Lanjutkan ke chat.'),
-        ),
-      );
-      // 🔜 NANTI: context.go('/chat/xxx');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Verifikasi ditolak')),
-      );
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      _showSnack('User belum login');
+      return;
     }
+
+    final data = widget.data;
+
+    // ✅ FIX: field yang benar adalah requester_user_id
+    final requesterId = (data['requester_user_id'] ?? '').toString().trim();
+    if (requesterId.isEmpty) {
+      _showSnack('requester_user_id tidak ditemukan');
+      return;
+    }
+
+    final requesterName = (data['requester_name'] ?? 'User').toString();
+
+    setState(() => _isLoading = true);
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+
+      /// 1) Update status + read
+      await firestore
+          .collection('ownership_verifications')
+          .doc(widget.docId)
+          .update({
+        'status': accepted ? 'accepted' : 'rejected',
+        'read': true,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      if (!accepted) {
+        if (!mounted) return;
+        _showSnack('Verifikasi ditolak');
+        return;
+      }
+
+      /// 2) Chat ID deterministik (anti dobel)
+      final myUid = currentUser.uid;
+      final ids = [myUid, requesterId]..sort();
+      final chatId = '${ids[0]}_${ids[1]}';
+
+      final myName =
+          currentUser.displayName ?? currentUser.email?.split('@').first ?? 'User';
+
+      final chatRef = firestore.collection('chats').doc(chatId);
+
+      /// 3) Create chat (merge)
+      await chatRef.set({
+        'participants': [myUid, requesterId],
+        'participant_names': {
+          myUid: myName,
+          requesterId: requesterName,
+        },
+        'last_message': 'Chat dimulai',
+        'updated_at': FieldValue.serverTimestamp(),
+        'created_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      /// 4) Add first message if empty
+      final lastMsg = await chatRef
+          .collection('messages')
+          .orderBy('created_at', descending: true)
+          .limit(1)
+          .get();
+
+      if (lastMsg.docs.isEmpty) {
+        await chatRef.collection('messages').add({
+          'sender_id': myUid,
+          'text': 'Chat dimulai',
+          'created_at': FieldValue.serverTimestamp(),
+        });
+      }
+
+      /// 5) Navigate sesuai router.dart kamu
+      if (!mounted) return;
+
+      context.go(
+        '/chat/detail',
+        extra: {
+          'chatId': chatId,
+          'partnerName': requesterName,
+        },
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      _showSnack('Firebase error: ${e.message ?? e.code}');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 }

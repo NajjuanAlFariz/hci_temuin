@@ -10,7 +10,6 @@ import '../../widgets/home_top_navbar.dart';
 import '../../utils/category_icon_mapper.dart';
 import '../../utils/time_ago.dart';
 
-
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -18,51 +17,47 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-
-body: Column(
-  children: [
-    const HomeTopNavbar(),
-    Expanded(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _StatCardRow(),
-            const SizedBox(height: 20),
-
-            const UploadReportSection(),
-            const SizedBox(height: 24),
-
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFAFA),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 10,
-                    offset: Offset(0, 4),
+      body: Column(
+        children: [
+          const HomeTopNavbar(),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _StatCardRow(),
+                  const SizedBox(height: 20),
+                  const UploadReportSection(),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFAFA),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _LatestHeader(),
+                        SizedBox(height: 12),
+                        LatestReports(),
+                      ],
+                    ),
                   ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  _LatestHeader(),
-                  SizedBox(height: 12),
-                  LatestReports(),
-                ],
-              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    ),
-  ],
-),
-
       bottomNavigationBar: const Navbar(currentIndex: 0),
     );
   }
@@ -73,8 +68,8 @@ class _StatCardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: const [
+    return const Row(
+      children: [
         LostItemStatCard(),
         SizedBox(width: 12),
         FoundItemStatCard(),
@@ -92,6 +87,16 @@ class LostItemStatCard extends StatelessWidget {
       child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('lost_items').snapshots(),
         builder: (_, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const _StatCard(
+              title: 'Barang Hilang',
+              count: 0,
+              iconAsset: 'assets/image/icon/lost.png',
+              iconBgColor: Color(0xFFFFEBEE),
+              isLoading: true,
+            );
+          }
+
           final total = snapshot.data?.docs.length ?? 0;
           return _StatCard(
             title: 'Barang Hilang',
@@ -112,9 +117,18 @@ class FoundItemStatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: StreamBuilder<QuerySnapshot>(
-        stream:
-            FirebaseFirestore.instance.collection('found_items').snapshots(),
+        stream: FirebaseFirestore.instance.collection('found_items').snapshots(),
         builder: (_, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const _StatCard(
+              title: 'Barang Temuan',
+              count: 0,
+              iconAsset: 'assets/image/icon/found.png',
+              iconBgColor: Color(0xFFE8F5E9),
+              isLoading: true,
+            );
+          }
+
           final total = snapshot.data?.docs.length ?? 0;
           return _StatCard(
             title: 'Barang Temuan',
@@ -128,18 +142,19 @@ class FoundItemStatCard extends StatelessWidget {
   }
 }
 
-
 class _StatCard extends StatelessWidget {
   final String title;
   final int count;
   final String iconAsset;
   final Color iconBgColor;
+  final bool isLoading;
 
   const _StatCard({
     required this.title,
     required this.count,
     required this.iconAsset,
     required this.iconBgColor,
+    this.isLoading = false,
   });
 
   @override
@@ -164,13 +179,22 @@ class _StatCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  count.toString(),
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                isLoading
+                    ? Container(
+                        height: 34,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      )
+                    : Text(
+                        count.toString(),
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ],
             ),
           ),
@@ -189,7 +213,6 @@ class _StatCard extends StatelessWidget {
     );
   }
 }
-
 
 class LatestReports extends StatelessWidget {
   const LatestReports({super.key});
@@ -214,20 +237,36 @@ class LatestReports extends StatelessWidget {
         return StreamBuilder<QuerySnapshot>(
           stream: foundStream,
           builder: (_, foundSnap) {
-            if (!lostSnap.hasData || !foundSnap.hasData) {
+            if (lostSnap.connectionState == ConnectionState.waiting ||
+                foundSnap.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final reports = [
+            if (lostSnap.hasError || foundSnap.hasError) {
+              return const Center(child: Text('Terjadi kesalahan'));
+            }
+
+            if (!lostSnap.hasData || !foundSnap.hasData) {
+              return const Center(child: Text('Belum ada laporan'));
+            }
+
+            /// Gabungkan lost + found, tetap bawa reportId
+            final reports = <Map<String, dynamic>>[
               ...lostSnap.data!.docs.map((d) {
-                final data = d.data() as Map<String, dynamic>;
-                data['type'] = 'lost';
-                return data;
+                final data = (d.data() as Map<String, dynamic>);
+                return {
+                  ...data,
+                  'type': 'lost',
+                  'report_id': d.id,
+                };
               }),
               ...foundSnap.data!.docs.map((d) {
-                final data = d.data() as Map<String, dynamic>;
-                data['type'] = 'found';
-                return data;
+                final data = (d.data() as Map<String, dynamic>);
+                return {
+                  ...data,
+                  'type': 'found',
+                  'report_id': d.id,
+                };
               }),
             ];
 
@@ -235,23 +274,33 @@ class LatestReports extends StatelessWidget {
               return const Text('Belum ada laporan');
             }
 
+            /// Sort gabungan berdasarkan created_at
             reports.sort((a, b) {
               final aTime = a['created_at'] as Timestamp?;
               final bTime = b['created_at'] as Timestamp?;
-              if (aTime == null || bTime == null) return 0;
+              if (aTime == null && bTime == null) return 0;
+              if (aTime == null) return 1;
+              if (bTime == null) return -1;
               return bTime.compareTo(aTime);
             });
 
+            final top5 = reports.take(5).toList();
+
             return Column(
-              children: reports.take(5).map((data) {
-                final String name = data['name'];
-                final String category = data['category'];
-                final String location = data['location'];
-                final String type = data['type'];
-                final Timestamp? createdAt = data['created_at'];
+              children: top5.map((data) {
+                final String name = (data['name'] ?? '-').toString();
+                final String category = (data['category'] ?? '-').toString();
+                final String location = (data['location'] ?? '-').toString();
+                final String type = (data['type'] ?? 'lost').toString();
+                final String reportId = (data['report_id'] ?? '').toString();
+
+                final Timestamp? createdAt =
+                    data['created_at'] is Timestamp ? data['created_at'] : null;
 
                 return GestureDetector(
                   onTap: () {
+                    if (reportId.isEmpty) return;
+
                     showModalBottomSheet(
                       context: context,
                       isScrollControlled: true,
@@ -259,8 +308,10 @@ class LatestReports extends StatelessWidget {
                         borderRadius:
                             BorderRadius.vertical(top: Radius.circular(24)),
                       ),
-                      builder: (_) =>
-                          ReportDetailBottomSheet(data: data),
+                      builder: (_) => ReportDetailBottomSheet(
+                        data: data,
+                        reportId: reportId,
+                      ),
                     );
                   },
                   child: Container(
@@ -280,8 +331,10 @@ class LatestReports extends StatelessWidget {
                             color: Colors.black,
                             shape: BoxShape.circle,
                           ),
-                          child:
-                              CategoryIconMapper.buildIcon(category, size: 28),
+                          child: CategoryIconMapper.buildIcon(
+                            category,
+                            size: 28,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(

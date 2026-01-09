@@ -13,6 +13,16 @@ class FirestoreService {
   /// ============================================================
   User? get currentUser => _auth.currentUser;
 
+  String _resolveMyName(User user) {
+    final displayName = user.displayName?.trim();
+    if (displayName != null && displayName.isNotEmpty) return displayName;
+
+    final email = user.email?.trim();
+    if (email != null && email.contains('@')) return email.split('@').first;
+
+    return 'User';
+  }
+
   /// ============================================================
   /// CREATE - LAPORAN BARANG HILANG
   /// ============================================================
@@ -33,6 +43,10 @@ class FirestoreService {
       'description': description,
       'image_url': imageUrl,
       'user_id': user.uid,
+
+      // ✅ Tambahan agar nama pemilik bisa ditampilkan / dipakai chat tanpa read /users
+      'user_name': _resolveMyName(user),
+
       'status': 'active',
       'created_at': FieldValue.serverTimestamp(),
     });
@@ -56,6 +70,10 @@ class FirestoreService {
       'location': location,
       'image_url': imageUrl,
       'user_id': user.uid,
+
+      // ✅ Tambahan agar nama penemu bisa ditampilkan / dipakai chat tanpa read /users
+      'user_name': _resolveMyName(user),
+
       'status': 'active',
       'created_at': FieldValue.serverTimestamp(),
     });
@@ -111,8 +129,7 @@ class FirestoreService {
 
       // pengaju (pemilik barang)
       'requester_user_id': user.uid,
-      'requester_name':
-          user.displayName ?? user.email!.split('@').first,
+      'requester_name': _resolveMyName(user),
 
       // penerima (penemu barang)
       'target_user_id': targetUserId,
@@ -153,7 +170,8 @@ class FirestoreService {
     if (!snap.exists) return;
 
     final data = snap.data()!;
-    final String requesterId = data['requester_user_id'];
+    final String requesterId = (data['requester_user_id'] ?? '').toString();
+    if (requesterId.isEmpty) return;
 
     // UPDATE STATUS
     await ref.update({
@@ -166,9 +184,7 @@ class FirestoreService {
       'user_id': requesterId,
       'type': 'ownership_response',
       'ref_id': verificationId,
-      'title': accepted
-          ? 'Verifikasi Diterima'
-          : 'Verifikasi Ditolak',
+      'title': accepted ? 'Verifikasi Diterima' : 'Verifikasi Ditolak',
       'message': accepted
           ? 'Permintaan kepemilikan diterima'
           : 'Permintaan kepemilikan ditolak',

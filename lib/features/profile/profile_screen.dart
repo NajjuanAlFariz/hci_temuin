@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../theme/app_colors.dart';
 import '../../widgets/navbar.dart';
+import '../../widgets/finish_posting_dialog.dart';
+import '../../utils/category_icon_mapper.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -38,9 +40,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
 
           final data = snapshot.data!.data() as Map<String, dynamic>?;
-
-          final name = data?['name'] ?? '';
-          final email = data?['email'] ?? user!.email ?? '';
+          final name = (data?['name'] ?? '').toString();
+          final email = (data?['email'] ?? user!.email ?? '').toString();
 
           return Column(
             children: [
@@ -65,7 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Container(
                       width: 105,
                       height: 105,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
                       ),
@@ -84,7 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Column(
                 children: [
                   Text(
-                    name,
+                    name.isEmpty ? 'User' : name,
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -100,28 +101,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  /// ✅ FIXED LOGOUT BUTTON
+                  /// LOGOUT
                   SizedBox(
                     height: 38,
                     child: OutlinedButton(
-                    onPressed: () async {
-                      await FirebaseAuth.instance.signOut();
-
-                      if (!context.mounted) return;
-                      context.go('/login');
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 28),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
+                      onPressed: () async {
+                        await FirebaseAuth.instance.signOut();
+                        if (!context.mounted) return;
+                        context.go('/login');
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 28),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        side: const BorderSide(color: Colors.black),
                       ),
-                      side: const BorderSide(color: Colors.black),
+                      child: const Text(
+                        'Log Out',
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
                     ),
-                    child: const Text(
-                      'Log Out',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                   ),
                   ),
                 ],
               ),
@@ -137,8 +137,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: _tabButton(
                         label: 'Proses',
                         active: showProcess,
-                        onTap: () =>
-                            setState(() => showProcess = true),
+                        onTap: () => setState(() => showProcess = true),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -146,8 +145,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: _tabButton(
                         label: 'Selesai',
                         active: !showProcess,
-                        onTap: () =>
-                            setState(() => showProcess = false),
+                        onTap: () => setState(() => showProcess = false),
                       ),
                     ),
                   ],
@@ -156,7 +154,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 16),
 
-              /// ================= RIWAYAT =================
+              /// ================= GRID REPORT =================
               Expanded(
                 child: _UserReports(
                   uid: user!.uid,
@@ -199,7 +197,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 /// ============================================================
-/// USER REPORTS
+/// USER REPORTS (lost_items + found_items) + popup selesai posting
 /// ============================================================
 class _UserReports extends StatelessWidget {
   final String uid;
@@ -209,6 +207,12 @@ class _UserReports extends StatelessWidget {
     required this.uid,
     required this.showProcess,
   });
+
+  bool _matchStatus(String status) {
+    final s = status.trim().toLowerCase();
+    if (showProcess) return s != 'done'; // proses = bukan done (active)
+    return s == 'done';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -232,45 +236,155 @@ class _UserReports extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final reports = [
-              ...lostSnap.data!.docs,
-              ...foundSnap.data!.docs,
-            ];
+            // Gabungkan lost + found jadi list item yang seragam
+            final items = <_ProfileReportItem>[];
 
-            if (reports.isEmpty) {
-              return const Center(child: Text('Belum ada laporan'));
+            for (final doc in lostSnap.data!.docs) {
+              final map = doc.data() as Map<String, dynamic>;
+              items.add(_ProfileReportItem.fromDoc(
+                docId: doc.id,
+                collection: 'lost_items',
+                data: map,
+              ));
+            }
+
+            for (final doc in foundSnap.data!.docs) {
+              final map = doc.data() as Map<String, dynamic>;
+              items.add(_ProfileReportItem.fromDoc(
+                docId: doc.id,
+                collection: 'found_items',
+                data: map,
+              ));
+            }
+
+            // Filter tab proses/selesai
+            final filtered = items.where((e) => _matchStatus(e.status)).toList();
+
+            if (filtered.isEmpty) {
+              return Center(
+                child: Text(showProcess ? 'Belum ada laporan proses' : 'Belum ada laporan selesai'),
+              );
             }
 
             return GridView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
               ),
-              itemCount: reports.length,
+              itemCount: filtered.length,
               itemBuilder: (_, i) {
-                final data =
-                    reports[i].data() as Map<String, dynamic>;
+                final item = filtered[i];
 
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: data['image_url'] != null
-                      ? Image.network(
-                          data['image_url'],
-                          fit: BoxFit.cover,
-                        )
-                      : Container(
-                          color: Colors.grey.shade300,
-                          child: const Icon(Icons.inventory),
-                        ),
+                return GestureDetector(
+                  onTap: () async {
+                    await showFinishPostingPopupFirestore(
+                      context,
+                      collection: item.collection, // 'lost_items' / 'found_items'
+                      docId: item.docId,
+                      title: item.name.isEmpty ? 'Postingan' : item.name,
+                      category: item.category,
+                      status: item.status, // 'active' / 'done'
+                      imageUrl: item.imageUrl,
+                    );
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: _GridThumb(
+                      imageUrl: item.imageUrl,
+                      category: item.category,
+                    ),
+                  ),
                 );
               },
             );
           },
         );
       },
+    );
+  }
+}
+
+/// Thumbnail grid: gambar kalau ada, kalau tidak ada icon category
+class _GridThumb extends StatelessWidget {
+  final String? imageUrl;
+  final String category;
+
+  const _GridThumb({
+    required this.imageUrl,
+    required this.category,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final url = imageUrl?.trim();
+
+    if (url != null && url.isNotEmpty) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _fallback(),
+        loadingBuilder: (_, child, progress) {
+          if (progress == null) return child;
+          return Container(
+            color: Colors.grey.shade200,
+            alignment: Alignment.center,
+            child: const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        },
+      );
+    }
+
+    return _fallback();
+  }
+
+  Widget _fallback() {
+    return Container(
+      color: Colors.blue,
+      alignment: Alignment.center,
+      child: CategoryIconMapper.buildIcon(
+        category.isEmpty ? '-' : category,
+        size: 34,
+      ),
+    );
+  }
+}
+
+/// Model item untuk profile grid
+class _ProfileReportItem {
+  final String docId;
+  final String collection; // lost_items / found_items
+  final String name;
+  final String category;
+  final String status; // active / done
+  final String? imageUrl;
+
+  _ProfileReportItem({
+    required this.docId,
+    required this.collection,
+    required this.name,
+    required this.category,
+    required this.status,
+    required this.imageUrl,
+  });
+
+  factory _ProfileReportItem.fromDoc({
+    required String docId,
+    required String collection,
+    required Map<String, dynamic> data,
+  }) {
+    return _ProfileReportItem(
+      docId: docId,
+      collection: collection,
+      name: (data['name'] ?? '').toString(),
+      category: (data['category'] ?? '').toString(),
+      status: (data['status'] ?? 'active').toString(),
+      imageUrl: data['image_url']?.toString(),
     );
   }
 }

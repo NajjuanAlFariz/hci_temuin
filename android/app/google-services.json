@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "968431767162-vvraf506aevfb6rabr8rd9ghh57b84mo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "temuin.barang_hilang.com",
+            "certificate_hash": "0755fdf4a30ab475df84d6c510bddbf711a285c7"
+          }
+        },
+        {
           "client_id": "968431767162-35fksu9hl9r3t9pj2jmophfa5mk12do5.apps.googleusercontent.com",
           "client_type": 3
         }

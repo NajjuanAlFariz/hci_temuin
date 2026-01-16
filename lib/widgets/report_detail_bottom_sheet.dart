@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../theme/app_colors.dart';
 import '../utils/category_icon_mapper.dart';
 import '../utils/time_ago.dart';
-import '../utils/report_type.dart';
 import 'ownership_verification_dialog.dart';
 
 class ReportDetailBottomSheet extends StatelessWidget {
@@ -19,6 +18,30 @@ class ReportDetailBottomSheet extends StatelessWidget {
     required this.reportId,
   });
 
+  // ============================================================
+  // STATUS
+  // ============================================================
+  bool _isDone(String? status) => (status ?? 'active') != 'active';
+
+  // ============================================================
+  // RESOLVE NAMA USER
+  // ============================================================
+  String _resolveOwnerNameFromReport(Map<String, dynamic> reportData) {
+    final candidates = [
+      reportData['user_name'],
+      reportData['owner_name'],
+      reportData['reporter_name'],
+      reportData['created_by_name'],
+    ];
+
+    for (final c in candidates) {
+      if (c != null && c.toString().trim().isNotEmpty) {
+        return c.toString().trim();
+      }
+    }
+    return 'User';
+  }
+
   String _resolveMyName(User user) {
     final dn = user.displayName?.trim();
     if (dn != null && dn.isNotEmpty) return dn;
@@ -29,140 +52,134 @@ class ReportDetailBottomSheet extends StatelessWidget {
     return 'User';
   }
 
-  Future<String> _getOwnerNameSafe({
-    required FirebaseFirestore db,
-    required ReportType type,
-    required String reportId,
-    required Map<String, dynamic> reportDataFromList,
-  }) async {
-    final fromList = (reportDataFromList['user_name'] ?? '').toString().trim();
-    if (fromList.isNotEmpty) return fromList;
-
-    final collection = type == ReportType.lost ? 'lost_items' : 'found_items';
-    final snap = await db.collection(collection).doc(reportId).get();
-    if (snap.exists) {
-      final doc = snap.data() as Map<String, dynamic>;
-      final fromDoc = (doc['user_name'] ?? '').toString().trim();
-      if (fromDoc.isNotEmpty) return fromDoc;
-    }
-
-    return 'User';
+  void _showSnackSafe(BuildContext context, String msg) {
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<void> _openChatWithOwner(BuildContext context) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  // ============================================================
+  // CHAT CONTEXT → disimpan ke chats/{chatId}.context
+  // ============================================================
+  Map<String, dynamic> _buildChatContextFromReport() {
+    return {
+      'report_id': reportId,
+      'report_type': (data['type'] ?? 'lost').toString(), // lost | found
+      'title': (data['name'] ?? '-').toString(),
+      'category': (data['category'] ?? '-').toString(),
+      'location': (data['location'] ?? '').toString(),
+    };
+  }
 
-    final ownerId = (data['user_id'] ?? '').toString().trim();
-    if (ownerId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Owner tidak ditemukan')),
-      );
+  // ============================================================
+  // OPEN CHAT + SIMPAN CONTEXT
+  // ============================================================
+  Future<void> _openChatWithOwner({
+    required BuildContext rootContext,
+    required String ownerId,
+  }) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      _showSnackSafe(rootContext, 'User belum login');
       return;
     }
 
-    if (ownerId == user.uid) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ini laporan milik kamu')),
-      );
+    final trimmedOwner = ownerId.trim();
+    if (trimmedOwner.isEmpty) {
+      _showSnackSafe(rootContext, 'Owner tidak valid');
       return;
     }
 
-    final isLost = (data['type'] ?? 'lost') == 'lost';
-    final type = isLost ? ReportType.lost : ReportType.found;
+    if (trimmedOwner == currentUser.uid) {
+      _showSnackSafe(rootContext, 'Tidak bisa chat dengan diri sendiri');
+      return;
+    }
+
+    // ✅ simpan router sebelum await
+    final router = GoRouter.of(rootContext);
 
     final db = FirebaseFirestore.instance;
 
-    final ownerName = await _getOwnerNameSafe(
-      db: db,
-      type: type,
-      reportId: reportId,
-      reportDataFromList: data,
-    );
+    try {
+      final ownerName = _resolveOwnerNameFromReport(data);
+      final myName = _resolveMyName(currentUser);
 
-    final myName = _resolveMyName(user);
+      // chatId deterministik
+      final ids = [currentUser.uid, trimmedOwner]..sort();
+      final chatId = '${ids[0]}_${ids[1]}';
 
-    final a = user.uid;
-    final b = ownerId;
-    final chatId = (a.compareTo(b) < 0) ? '${a}_$b' : '${b}_$a';
+      final chatRef = db.collection('chats').doc(chatId);
 
-    final chatRef = db.collection('chats').doc(chatId);
-    final snap = await chatRef.get();
+      // simpan context report di chat doc
+      final contextData = _buildChatContextFromReport();
 
-    if (!snap.exists) {
       await chatRef.set({
-        'participants': [user.uid, ownerId],
-        'participant_names': {
-          user.uid: myName,
-          ownerId: ownerName,
-        },
-        'last_message': 'Chat dimulai',
-        'created_at': FieldValue.serverTimestamp(),
+        'participants': [currentUser.uid, trimmedOwner],
+        'participant_names': {currentUser.uid: myName, trimmedOwner: ownerName},
+        'context': contextData,
         'updated_at': FieldValue.serverTimestamp(),
-      });
-
-      await chatRef.collection('messages').add({
-        'sender_id': user.uid,
-        'text': 'Chat dimulai',
         'created_at': FieldValue.serverTimestamp(),
-      });
-    } else {
-      final dataChat = snap.data() as Map<String, dynamic>;
-      final namesRaw = dataChat['participant_names'];
-      if (namesRaw is Map) {
-        final names = Map<String, dynamic>.from(namesRaw);
-        final currentName = (names[ownerId] ?? '').toString().trim();
-        if ((currentName.isEmpty || currentName == 'User') &&
-            ownerName.isNotEmpty &&
-            ownerName != 'User') {
-          await chatRef.update({
-            'participant_names.$ownerId': ownerName,
-          });
-        }
+      }, SetOptions(merge: true));
+
+      // optional: bikin message awal kalau kosong
+      final msgSnap = await chatRef.collection('messages').limit(1).get();
+      if (msgSnap.docs.isEmpty) {
+        await chatRef.collection('messages').add({
+          'text': 'Chat dimulai',
+          'sender_id': currentUser.uid,
+          'created_at': FieldValue.serverTimestamp(),
+        });
+
+        await chatRef.set({
+          'last_message': 'Chat dimulai',
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       }
+
+      // navigate
+      router.go(
+        '/chat/detail',
+        extra: {'chatId': chatId, 'partnerName': ownerName},
+      );
+    } on FirebaseException catch (e) {
+      // ignore: use_build_context_synchronously
+      _showSnackSafe(rootContext, 'Firebase error: ${e.message ?? e.code}');
+    } catch (e) {
+      // ignore: use_build_context_synchronously
+      _showSnackSafe(rootContext, 'Error: $e');
     }
-
-    if (!context.mounted) return;
-
-    context.pop(); // tutup bottomsheet
-    if (!context.mounted) return;
-
-    context.go(
-      '/chat/detail',
-      extra: {
-        'chatId': chatId,
-        'partnerName': ownerName,
-      },
-    );
   }
 
-  void _openVerification(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final ownerId = (data['user_id'] ?? '').toString().trim();
-    if (ownerId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Target user tidak ditemukan')),
-      );
+  // ============================================================
+  // OPEN VERIFICATION
+  // ============================================================
+  void _openVerification({
+    required BuildContext rootContext,
+    required String ownerId,
+  }) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      _showSnackSafe(rootContext, 'User belum login');
       return;
     }
 
-    if (ownerId == user.uid) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ini laporan milik kamu')),
-      );
+    final trimmedOwner = ownerId.trim();
+    if (trimmedOwner.isEmpty) {
+      _showSnackSafe(rootContext, 'Target user tidak ditemukan');
       return;
     }
 
-    context.pop(); // close bottom sheet
+    if (trimmedOwner == currentUser.uid) {
+      _showSnackSafe(rootContext, 'Ini laporan milik kamu');
+      return;
+    }
 
     showDialog(
-      context: context,
+      context: rootContext,
       builder: (_) => OwnershipVerificationDialog(
         reportId: reportId,
         reportType: 'found',
-        targetUserId: ownerId,
+        targetUserId: trimmedOwner,
       ),
     );
   }
@@ -176,17 +193,22 @@ class ReportDetailBottomSheet extends StatelessWidget {
         currentUser != null && ownerId.isNotEmpty && currentUser.uid == ownerId;
 
     final bool isLost = (data['type'] ?? 'lost') == 'lost';
+    final String status = (data['status'] ?? 'active').toString();
+    final bool done = _isDone(status);
 
     final String name = (data['name'] ?? '-').toString();
     final String category = (data['category'] ?? '-').toString();
     final String location = (data['location'] ?? '-').toString();
     final String description = (data['description'] ?? '-').toString();
-    final String? imageUrl = data['image_url']?.toString();
 
-    final Timestamp? createdAt =
-        data['created_at'] is Timestamp ? data['created_at'] as Timestamp : null;
+    final Timestamp? createdAt = data['created_at'] is Timestamp
+        ? data['created_at'] as Timestamp
+        : null;
 
     final String timeText = createdAt != null ? timeAgo(createdAt) : '-';
+
+    // ✅ root context untuk dialog / navigasi
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
 
     return SafeArea(
       child: Padding(
@@ -194,7 +216,7 @@ class ReportDetailBottomSheet extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            /// drag handle
+            // drag handle
             Container(
               width: 40,
               height: 4,
@@ -205,51 +227,45 @@ class ReportDetailBottomSheet extends StatelessWidget {
               ),
             ),
 
-            /// IMAGE / ICON
+            // ============================================================
+            // ICON KATEGORI (SELALU) — sinkron dengan dialog
+            // ============================================================
             ClipRRect(
               borderRadius: BorderRadius.circular(18),
-              child: SizedBox(
+              child: Container(
                 height: 140,
                 width: double.infinity,
-                child: (imageUrl != null && imageUrl.isNotEmpty)
-                    ? Image.network(imageUrl, fit: BoxFit.cover)
-                    : Container(
-                        color: Warna.blue,
-                        alignment: Alignment.center,
-                        child: CategoryIconMapper.buildIcon(
-                          category,
-                          size: 64,
-                        ),
-                      ),
+                color: Warna.blue,
+                alignment: Alignment.center,
+                child: CategoryIconMapper.buildIcon(category, size: 64),
               ),
             ),
 
             const SizedBox(height: 16),
 
-            /// NAME
+            // NAME
             Text(
               name,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
 
             const SizedBox(height: 6),
 
-            /// STATUS
+            // STATUS TEXT
             Text(
-              isLost ? 'Hilang • $timeText' : 'Ditemukan • $timeText',
+              done
+                  ? 'Selesai'
+                  : (isLost ? 'Hilang • $timeText' : 'Ditemukan • $timeText'),
               style: TextStyle(
-                color: isLost ? Colors.red : Colors.green,
+                color: done ? Warna.blue : (isLost ? Colors.red : Colors.green),
                 fontWeight: FontWeight.w600,
               ),
             ),
 
             const SizedBox(height: 6),
 
-            /// LOCATION
+            // LOCATION
             Text(
               'Lokasi Terakhir : $location',
               style: const TextStyle(color: Colors.black54),
@@ -258,7 +274,7 @@ class ReportDetailBottomSheet extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            /// DESCRIPTION
+            // DESCRIPTION
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
@@ -269,32 +285,61 @@ class ReportDetailBottomSheet extends StatelessWidget {
               child: Text(description),
             ),
 
-            /// ACTION BUTTON (HANYA JIKA BUKAN LAPORAN SENDIRI & USER LOGIN)
-            if (currentUser != null && !isMyReport) ...[
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 46,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Warna.blue,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: () async {
-                    if (isLost) {
-                      await _openChatWithOwner(context);
-                    } else {
-                      _openVerification(context);
-                    }
-                  },
-                  child: Text(
-                    isLost ? 'Hubungi' : 'Verifikasi Kepemilikan',
+            const SizedBox(height: 20),
+
+            // ============================================================
+            // ACTION BUTTON — sinkron dengan dialog:
+            // - done => Tutup
+            // - my report => Tutup
+            // - active & bukan milik sendiri => Hubungi/Verifikasi
+            // ============================================================
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: (done || isMyReport)
+                      ? Colors.grey.shade400
+                      : Warna.blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
+                onPressed: () async {
+                  // ✅ selesai / laporan sendiri => tutup
+                  if (done || isMyReport) {
+                    Navigator.of(context).pop();
+                    return;
+                  }
+
+                  // ✅ harus login untuk aksi
+                  if (currentUser == null) {
+                    _showSnackSafe(rootContext, 'User belum login');
+                    return;
+                  }
+
+                  // tutup bottomsheet dulu biar aman UI
+                  Navigator.of(context).pop();
+
+                  if (isLost) {
+                    await _openChatWithOwner(
+                      rootContext: rootContext,
+                      ownerId: ownerId,
+                    );
+                  } else {
+                    _openVerification(
+                      rootContext: rootContext,
+                      ownerId: ownerId,
+                    );
+                  }
+                },
+                child: Text(
+                  (done || isMyReport)
+                      ? 'Tutup'
+                      : (isLost ? 'Hubungi' : 'Verifikasi Kepemilikan'),
+                ),
               ),
-            ],
+            ),
           ],
         ),
       ),

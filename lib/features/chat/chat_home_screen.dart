@@ -36,7 +36,6 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     required String myUid,
     required String partnerUid,
   }) {
-    // 1) participant_names[partnerUid]
     final namesRaw = data['participant_names'];
     if (namesRaw is Map) {
       final names = Map<String, dynamic>.from(namesRaw);
@@ -46,12 +45,24 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
       }
     }
 
-    // 2) fallback: chat_partner_name (kalau kamu simpan saat create chat)
     final fallback = (data['chat_partner_name'] ?? '').toString().trim();
     if (fallback.isNotEmpty) return fallback;
 
-    // 3) fallback terakhir
     return 'User';
+  }
+
+  int _getMyUnreadCount({
+    required Map<String, dynamic> data,
+    required String myUid,
+  }) {
+    final unreadRaw = data['unread_for'];
+    if (unreadRaw is Map) {
+      final unread = Map<String, dynamic>.from(unreadRaw);
+      final v = unread[myUid];
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+    }
+    return 0;
   }
 
   @override
@@ -59,34 +70,23 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text('User belum login')),
-      );
+      return const Scaffold(body: Center(child: Text('User belum login')));
     }
 
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
           onPressed: () => context.go('/home'),
-          icon: Image.asset(
-            'assets/image/icon/arrow-back.png',
-            width: 22,
-          ),
+          icon: Image.asset('assets/image/icon/arrow-back.png', width: 22),
         ),
-        title: const Text(
-          'Chat',
-          style: TextStyle(color: Colors.black),
-        ),
+        title: const Text('Chat', style: TextStyle(color: Colors.black)),
         centerTitle: true,
       ),
-
       body: Column(
         children: [
-          /// SEARCH
           Padding(
             padding: const EdgeInsets.all(16),
             child: Container(
@@ -117,7 +117,6 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
             ),
           ),
 
-          /// CHAT LIST
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance
@@ -146,8 +145,9 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                 for (final d in docs) {
                   final data = d.data();
 
-                  final participants =
-                      List<String>.from(data['participants'] ?? []);
+                  final participants = List<String>.from(
+                    data['participants'] ?? [],
+                  );
 
                   final partnerUid = participants.firstWhere(
                     (id) => id != user.uid,
@@ -163,13 +163,18 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                   final lastMessage = (data['last_message'] ?? '').toString();
                   final time = _formatTime(data['updated_at']);
 
-                  // Search filter (local)
-                  final combined = '${partnerName.toLowerCase()} '
+                  final combined =
+                      '${partnerName.toLowerCase()} '
                       '${lastMessage.toLowerCase()}';
 
                   if (_keyword.isNotEmpty && !combined.contains(_keyword)) {
                     continue;
                   }
+
+                  final myUnread = _getMyUnreadCount(
+                    data: data,
+                    myUid: user.uid,
+                  );
 
                   items.add(
                     _ChatItem(
@@ -177,9 +182,7 @@ class _ChatHomeScreenState extends State<ChatHomeScreen> {
                       partnerName: partnerName,
                       lastMessage: lastMessage,
                       time: time,
-                      unread: data['unread_count'] is int
-                          ? data['unread_count'] as int
-                          : 0,
+                      unread: myUnread,
                     ),
                   );
                 }
@@ -271,7 +274,6 @@ class ChatTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            /// AVATAR
             Container(
               width: 48,
               height: 48,
@@ -282,10 +284,8 @@ class ChatTile extends StatelessWidget {
               ),
               child: Image.asset('assets/image/profile_default.png'),
             ),
-
             const SizedBox(width: 12),
 
-            /// MESSAGE
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -304,31 +304,26 @@ class ChatTile extends StatelessWidget {
                     lastMessage,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade700,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                   ),
                 ],
               ),
             ),
 
-            /// RIGHT
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   time,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey,
-                  ),
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
                 ),
                 const SizedBox(height: 6),
                 if (unread > 0)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Warna.blue,
                       borderRadius: BorderRadius.circular(10),
@@ -343,7 +338,7 @@ class ChatTile extends StatelessWidget {
                     ),
                   )
                 else if (isRead)
-                  Image.asset( 'assets/image/icon/read.png', width: 18, ),
+                  Image.asset('assets/image/icon/read.png', width: 18),
               ],
             ),
           ],

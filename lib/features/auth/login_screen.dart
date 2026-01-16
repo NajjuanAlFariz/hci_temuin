@@ -25,9 +25,6 @@ class _LoginScreenState extends State<LoginScreen> {
     return email.endsWith('@students.paramadina.ac.id');
   }
 
-  /* ============================================================
-     LOGIN MANUAL
-  ============================================================ */
   Future<void> _loginManual() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -67,9 +64,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /* ============================================================
-     LOGIN GOOGLE (SESSION RESET ✔)
-  ============================================================ */
 Future<void> _loginWithGoogle() async {
   setState(() => _isLoading = true);
 
@@ -162,14 +156,10 @@ Future<void> _loginWithGoogle() async {
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             children: [
-              const SizedBox(height: 40),
-
               Image.asset(
                 'assets/image/logo_temuin.png',
                 height: 180,
               ),
-
-              const SizedBox(height: 24),
 
               Container(
                 padding: const EdgeInsets.all(32),

@@ -70,6 +70,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 return const Center(child: Text('Gagal memuat data found_items'));
               }
 
+              // =============================
+              // ✅ MERGE DATA (PENTING)
+              // LOST  : boleh pakai image_url
+              // FOUND : selalu pakai ICON kategori (abaikan image_url)
+              // =============================
               final lostItems = (lostSnap.data?.docs ?? []).map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 return {
@@ -85,12 +90,14 @@ class _CategoryScreenState extends State<CategoryScreen> {
                   ...data,
                   'type': 'found',
                   'doc_id': doc.id,
+
+                  // ✅ PAKSA: found_items tidak pernah menampilkan gambar upload
+                  'image_url': null,
                 };
               }).toList();
 
               final allItems = [...lostItems, ...foundItems];
 
-              // ✅ Sort manual (hindari index)
               allItems.sort((a, b) {
                 final aTime = a['created_at'] as Timestamp?;
                 final bTime = b['created_at'] as Timestamp?;
@@ -107,7 +114,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                           selectedCategory.toLowerCase())
                       .toList();
 
-              // ✅ Statistik
+              // ✅ Statistik (hitung yang status active saja untuk found/lost)
               final total = allItems.length;
               final totalFound = allItems
                   .where((e) =>
@@ -140,7 +147,8 @@ class _CategoryScreenState extends State<CategoryScreen> {
                             child: _CategoryChip(
                               text: cat,
                               active: active,
-                              onTap: () => setState(() => selectedCategory = cat),
+                              onTap: () =>
+                                  setState(() => selectedCategory = cat),
                             ),
                           );
                         }).toList(),
@@ -154,11 +162,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: filtered.length,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
-                        // ✅ sedikit lebih tinggi agar aman
                         childAspectRatio: 0.74,
                       ),
                       itemBuilder: (_, i) {
@@ -171,7 +179,8 @@ class _CategoryScreenState extends State<CategoryScreen> {
                               context: context,
                               builder: (_) => ReportDetailDialog(
                                 data: data,
-                                type: isLost ? ReportType.lost : ReportType.found,
+                                type:
+                                    isLost ? ReportType.lost : ReportType.found,
                                 reportId: (data['doc_id'] ?? '').toString(),
                               ),
                             );
@@ -224,9 +233,21 @@ class _StatsCard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _StatItem(label: 'Total Item', value: total.toString(), color: Warna.blue),
-          _StatItem(label: 'Ditemukan', value: found.toString(), color: Colors.green),
-          _StatItem(label: 'Di cari', value: lost.toString(), color: Colors.red),
+          _StatItem(
+            label: 'Total Item',
+            value: total.toString(),
+            color: Warna.blue,
+          ),
+          _StatItem(
+            label: 'Ditemukan',
+            value: found.toString(),
+            color: Colors.green,
+          ),
+          _StatItem(
+            label: 'Di cari',
+            value: lost.toString(),
+            color: Colors.red,
+          ),
         ],
       ),
     );
@@ -318,6 +339,20 @@ class _ReportCard extends StatelessWidget {
 
   bool _isActive(String? status) => (status ?? 'active') == 'active';
 
+  /// ✅ ambil image_url dengan validasi ketat (hindari "null", "", dll)
+  /// NOTE: ini tetap dipakai untuk LOST, karena FOUND sudah dipaksa null dari merge
+  String? _getValidImageUrl(Map<String, dynamic> d) {
+    final raw = d['image_url'];
+    if (raw == null) return null;
+
+    final url = raw.toString().trim();
+    if (url.isEmpty) return null;
+    if (url.toLowerCase() == 'null') return null;
+
+    if (!(url.startsWith('http://') || url.startsWith('https://'))) return null;
+    return url;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isLost = (data['type'] ?? 'lost') == 'lost';
@@ -325,7 +360,6 @@ class _ReportCard extends StatelessWidget {
     final String name = (data['name'] ?? '-').toString();
     final String category = (data['category'] ?? '-').toString();
     final String location = (data['location'] ?? '-').toString();
-    final String? imageUrl = data['image_url']?.toString();
     final String status = (data['status'] ?? 'active').toString();
 
     final Timestamp? createdAt =
@@ -334,17 +368,19 @@ class _ReportCard extends StatelessWidget {
     final String timeText = createdAt != null ? timeAgo(createdAt) : '-';
     final bool active = _isActive(status);
 
-    final String statusText = active
-        ? (isLost ? 'Di cari' : 'Ditemukan')
-        : 'Selesai';
+    final String statusText =
+        active ? (isLost ? 'Di cari' : 'Ditemukan') : 'Selesai';
 
     final Color statusBg = active
         ? (isLost ? const Color(0xFFFFD6D6) : const Color(0xFFD8F5E0))
         : const Color(0xFFD6ECFF);
 
-    final Color statusTextColor = active
-        ? (isLost ? Colors.red : Colors.green)
-        : Warna.blue;
+    final Color statusTextColor =
+        active ? (isLost ? Colors.red : Colors.green) : Warna.blue;
+
+    // ✅ LOST: pakai imageUrl kalau valid
+    // ✅ FOUND: imageUrl sudah null (dipaksa dari merge) → pasti icon
+    final String? imageUrl = isLost ? _getValidImageUrl(data) : null;
 
     return GestureDetector(
       onTap: onTap,
@@ -362,13 +398,13 @@ class _ReportCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            // ✅ FIX: tinggi gambar dipastikan
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(18)),
               child: SizedBox(
-                height: 112, // sedikit lebih pendek biar teks muat
+                height: 112,
                 width: double.infinity,
-                child: (imageUrl != null && imageUrl.isNotEmpty)
+                child: imageUrl != null
                     ? Image.network(
                         imageUrl,
                         fit: BoxFit.cover,
@@ -377,8 +413,6 @@ class _ReportCard extends StatelessWidget {
                     : _fallbackIcon(category),
               ),
             ),
-
-            // ✅ FIX: area teks dibuat flexible
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -399,16 +433,13 @@ class _ReportCard extends StatelessWidget {
                       style: const TextStyle(fontSize: 11, color: Colors.black54),
                     ),
                     const SizedBox(height: 2),
-
                     Text(
                       'Lokasi terakhir : $location',
-                      maxLines: 1, // ✅ penting biar ga nambah tinggi
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 11, color: Colors.black45),
                     ),
-
-                    const Spacer(), // ✅ dorong badge ke bawah tanpa overflow
-
+                    const Spacer(),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 6),

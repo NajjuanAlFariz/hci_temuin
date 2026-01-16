@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../theme/app_colors.dart';
+import '../../widgets/chat_product_header.dart'; // kalau kamu sudah pakai header produk
 
 class ChatDetailScreen extends StatefulWidget {
   final String chatId;
@@ -28,6 +29,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final _db = FirebaseFirestore.instance;
 
   bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _markChatAsRead(); // ✅ unread reset hanya saat masuk chat detail
+  }
 
   @override
   void dispose() {
@@ -57,6 +64,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     });
   }
 
+  /// ✅ MARK AS READ (reset unread_for.myUid)
+  Future<void> _markChatAsRead() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await _db.collection('chats').doc(widget.chatId).update({
+        'unread_for.${user.uid}': 0,
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+
   /// ================= SEND MESSAGE =================
   Future<void> _sendMessage() async {
     if (_sending) return;
@@ -70,6 +91,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     try {
       final chatRef = _db.collection('chats').doc(widget.chatId);
+
+      // ✅ ambil partner id dari participants
+      final chatSnap = await chatRef.get();
+      if (!chatSnap.exists) return;
+
+      final chatData = chatSnap.data() as Map<String, dynamic>;
+      final participants = List<String>.from(chatData['participants'] ?? []);
+
+      final partnerId = participants.firstWhere(
+        (id) => id != user.uid,
+        orElse: () => '',
+      );
+
       final msgRef = chatRef.collection('messages').doc();
 
       final batch = _db.batch();
@@ -80,22 +114,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         'created_at': FieldValue.serverTimestamp(),
       });
 
-      batch.set(
-        chatRef,
-        {
-          'last_message': text,
-          'updated_at': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      // ✅ update unread_for partner + last_message
+      batch.set(chatRef, {
+        'last_message': text,
+        'updated_at': FieldValue.serverTimestamp(),
+        if (partnerId.isNotEmpty)
+          'unread_for.$partnerId': FieldValue.increment(1),
+      }, SetOptions(merge: true));
 
       await batch.commit();
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal mengirim pesan')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Gagal mengirim pesan')));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -123,15 +156,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         elevation: 0,
         leading: IconButton(
           onPressed: _handleBack,
-          icon: Image.asset(
-            'assets/image/icon/arrow-back.png',
-            width: 22,
-          ),
+          icon: Image.asset('assets/image/icon/arrow-back.png', width: 22),
         ),
         titleSpacing: 0,
         title: Row(
           children: [
-            /// PROFILE IMAGE (ASSET PNG)
             CircleAvatar(
               radius: 18,
               backgroundColor: Colors.grey.shade200,
@@ -145,8 +174,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ),
             ),
             const SizedBox(width: 10),
-
-            /// PARTNER NAME
             Expanded(
               child: Text(
                 widget.partnerName,
@@ -164,6 +191,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       /// ================= BODY =================
       body: Column(
         children: [
+          /// ✅ HEADER PRODUK (ambil dari chats/{chatId}.context)
+          StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: _db.collection('chats').doc(widget.chatId).snapshots(),
+            builder: (_, snap) {
+              if (!snap.hasData || !snap.data!.exists) return const SizedBox();
+              final chatData = snap.data!.data() ?? {};
+              final ctx = chatData['context'];
+
+              if (ctx is! Map) return const SizedBox();
+
+              final contextData = Map<String, dynamic>.from(ctx);
+
+              return ChatProductHeader.fromContext(contextData);
+            },
+          ),
+
           /// ================= CHAT LIST =================
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -183,7 +226,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 }
 
                 final messages = snapshot.data?.docs ?? [];
-
                 if (messages.isNotEmpty) _scrollToBottom();
 
                 return ListView.builder(
@@ -216,7 +258,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ),
               child: Row(
                 children: [
-                  /// TEXT FIELD
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -240,8 +281,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-
-                  /// SEND BUTTON (ASSET PNG)
                   GestureDetector(
                     onTap: _sending ? null : _sendMessage,
                     child: Opacity(
@@ -263,9 +302,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 }
 
-/// ============================================================
-/// CHAT BUBBLE
-/// ============================================================
 class _ChatBubble extends StatelessWidget {
   final String message;
   final String time;
@@ -297,8 +333,9 @@ class _ChatBubble extends StatelessWidget {
           ),
         ),
         child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMe
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             Text(
               message,

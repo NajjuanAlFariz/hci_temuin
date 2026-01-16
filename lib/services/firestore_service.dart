@@ -44,7 +44,7 @@ class FirestoreService {
       'image_url': imageUrl,
       'user_id': user.uid,
 
-      // ✅ Tambahan agar nama pemilik bisa ditampilkan / dipakai chat tanpa read /users
+      // ✅ nama pemilik (biar chat gak baca /users)
       'user_name': _resolveMyName(user),
 
       'status': 'active',
@@ -71,7 +71,7 @@ class FirestoreService {
       'image_url': imageUrl,
       'user_id': user.uid,
 
-      // ✅ Tambahan agar nama penemu bisa ditampilkan / dipakai chat tanpa read /users
+      // ✅ nama penemu (biar chat gak baca /users)
       'user_name': _resolveMyName(user),
 
       'status': 'active',
@@ -104,25 +104,44 @@ class FirestoreService {
     required String docId,
     required String status,
   }) async {
-    await _db.collection(collection).doc(docId).update({
-      'status': status,
-    });
+    await _db.collection(collection).doc(docId).update({'status': status});
   }
 
-  /// ============================================================
-  /// REQUEST OWNERSHIP VERIFICATION (→ BUAT NOTIFIKASI)
-  /// ============================================================
   Future<void> requestOwnershipVerification({
     required String reportId,
-    required String reportType, // lost | found
+    required String reportType,
     required String description,
     required String targetUserId,
   }) async {
     final user = currentUser;
     if (user == null) throw Exception('User belum login');
 
-    final verificationRef =
-        await _db.collection('ownership_verifications').add({
+    // ✅ ambil data report utk report_context
+    final collection = reportType == 'lost' ? 'lost_items' : 'found_items';
+    final reportSnap = await _db.collection(collection).doc(reportId).get();
+
+    Map<String, dynamic> reportContext = {
+      'report_id': reportId,
+      'report_type': reportType,
+      'title': '-',
+      'category': '-',
+      'location': '',
+      'image_url': null,
+    };
+
+    if (reportSnap.exists) {
+      final r = reportSnap.data() as Map<String, dynamic>;
+      reportContext = {
+        'report_id': reportId,
+        'report_type': reportType,
+        'title': (r['name'] ?? '-').toString(),
+        'category': (r['category'] ?? '-').toString(),
+        'location': (r['location'] ?? '').toString(),
+        'image_url': r['image_url']?.toString(),
+      };
+    }
+
+    final verificationRef = await _db.collection('ownership_verifications').add({
       'report_id': reportId,
       'report_type': reportType,
       'description': description,
@@ -133,6 +152,9 @@ class FirestoreService {
 
       // penerima (penemu barang)
       'target_user_id': targetUserId,
+
+      // ✅ PENTING: dipakai saat target user accept → copy ke chats/{chatId}.context
+      'report_context': reportContext,
 
       'status': 'pending', // pending | accepted | rejected
       'read': false,
@@ -163,8 +185,7 @@ class FirestoreService {
 
     final status = accepted ? 'accepted' : 'rejected';
 
-    final ref =
-        _db.collection('ownership_verifications').doc(verificationId);
+    final ref = _db.collection('ownership_verifications').doc(verificationId);
 
     final snap = await ref.get();
     if (!snap.exists) return;
@@ -174,10 +195,7 @@ class FirestoreService {
     if (requesterId.isEmpty) return;
 
     // UPDATE STATUS
-    await ref.update({
-      'status': status,
-      'read': true,
-    });
+    await ref.update({'status': status, 'read': true});
 
     // ⬇️ NOTIFIKASI BALIK KE REQUESTER
     await _db.collection('notifications').add({
@@ -198,9 +216,7 @@ class FirestoreService {
   /// ============================================================
   Stream<QuerySnapshot> getUserNotifications() {
     final user = currentUser;
-    if (user == null) {
-      return const Stream.empty();
-    }
+    if (user == null) return const Stream.empty();
 
     return _db
         .collection('notifications')
@@ -211,9 +227,7 @@ class FirestoreService {
 
   Stream<int> getUnreadNotificationCount() {
     final user = currentUser;
-    if (user == null) {
-      return Stream.value(0);
-    }
+    if (user == null) return Stream.value(0);
 
     return _db
         .collection('notifications')

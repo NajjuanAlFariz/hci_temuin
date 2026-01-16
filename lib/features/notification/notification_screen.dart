@@ -28,15 +28,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
         elevation: 0,
         leading: IconButton(
           onPressed: () => context.go('/home'),
-          icon: Image.asset(
-            'assets/image/icon/arrow-back.png',
-            width: 22,
-          ),
+          icon: Image.asset('assets/image/icon/arrow-back.png', width: 22),
         ),
-        title: const Text(
-          'Notifikasi',
-          style: TextStyle(color: Colors.black),
-        ),
+        title: const Text('Notifikasi', style: TextStyle(color: Colors.black)),
         centerTitle: true,
       ),
       body: Column(
@@ -60,10 +54,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           const SizedBox(height: 12),
 
           Expanded(
-            child: _NotificationList(
-              activeTab: _activeTab,
-              userId: _user?.uid,
-            ),
+            child: _NotificationList(activeTab: _activeTab, userId: _user?.uid),
           ),
         ],
       ),
@@ -99,16 +90,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
 }
 
 /// ============================================================
-/// NOTIFICATION LIST (berdasarkan ownership_verifications)
+/// NOTIFICATION LIST (ownership_verifications)
 /// ============================================================
 class _NotificationList extends StatelessWidget {
   final NotificationTab activeTab;
   final String? userId;
 
-  const _NotificationList({
-    required this.activeTab,
-    required this.userId,
-  });
+  const _NotificationList({required this.activeTab, required this.userId});
 
   @override
   Widget build(BuildContext context) {
@@ -135,7 +123,6 @@ class _NotificationList extends StatelessWidget {
         }
 
         if (snapshot.hasError) {
-          // Jika ini error index, biasanya Firestore kasih link index di message.
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -156,10 +143,7 @@ class _NotificationList extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           itemCount: docs.length,
           itemBuilder: (_, i) {
-            return _NotificationCard(
-              docId: docs[i].id,
-              data: docs[i].data(),
-            );
+            return _NotificationCard(docId: docs[i].id, data: docs[i].data());
           },
         );
       },
@@ -168,16 +152,13 @@ class _NotificationList extends StatelessWidget {
 }
 
 /// ============================================================
-/// NOTIFICATION CARD (stateful + loading + action)
+/// NOTIFICATION CARD
 /// ============================================================
 class _NotificationCard extends StatefulWidget {
   final String docId;
   final Map<String, dynamic> data;
 
-  const _NotificationCard({
-    required this.docId,
-    required this.data,
-  });
+  const _NotificationCard({required this.docId, required this.data});
 
   @override
   State<_NotificationCard> createState() => _NotificationCardState();
@@ -194,8 +175,9 @@ class _NotificationCardState extends State<_NotificationCard> {
     final isPending = status == 'pending';
 
     final requesterName = (data['requester_name'] ?? 'User').toString();
-    final description =
-        data['description'] != null ? data['description'].toString() : '-';
+    final description = data['description'] != null
+        ? data['description'].toString()
+        : '-';
 
     return AbsorbPointer(
       absorbing: _isLoading,
@@ -333,10 +315,40 @@ class _NotificationCardState extends State<_NotificationCard> {
     );
   }
 
-  /// ============================================================
-  /// ACCEPT / REJECT + CREATE CHAT + NAVIGATE
-  /// (pakai field requester_user_id sesuai FirestoreService)
-  /// ============================================================
+  // ============================================================
+  // BUILD CHAT CONTEXT dari report doc (lost_items / found_items)
+  // ============================================================
+  Future<Map<String, dynamic>?> _buildChatContextFromVerification({
+    required FirebaseFirestore db,
+    required Map<String, dynamic> verification,
+  }) async {
+    final reportId = (verification['report_id'] ?? '').toString().trim();
+    final reportType = (verification['report_type'] ?? '')
+        .toString()
+        .trim(); // lost|found
+
+    if (reportId.isEmpty || reportType.isEmpty) return null;
+
+    final collection = reportType == 'lost' ? 'lost_items' : 'found_items';
+    final snap = await db.collection(collection).doc(reportId).get();
+    if (!snap.exists) return null;
+
+    final r = (snap.data() as Map<String, dynamic>);
+
+    return {
+      'report_id': reportId,
+      'report_type': reportType,
+      'title': (r['name'] ?? '-').toString(),
+      'category': (r['category'] ?? '-').toString(),
+      'location': (r['location'] ?? '').toString(),
+      // header chat kamu tidak wajib image, tapi aman kita simpan jika ada
+      'image_url': r['image_url']?.toString(),
+    };
+  }
+
+  // ============================================================
+  // ACCEPT / REJECT + CREATE CHAT + SIMPAN CONTEXT + NAVIGATE
+  // ============================================================
   Future<void> _handleDecision({required bool accepted}) async {
     if (_isLoading) return;
 
@@ -346,9 +358,11 @@ class _NotificationCardState extends State<_NotificationCard> {
       return;
     }
 
+    // ✅ simpan router sebelum async
+    final router = GoRouter.of(context);
+
     final data = widget.data;
 
-    // ✅ FIX: field yang benar adalah requester_user_id
     final requesterId = (data['requester_user_id'] ?? '').toString().trim();
     if (requesterId.isEmpty) {
       _showSnack('requester_user_id tidak ditemukan');
@@ -362,45 +376,56 @@ class _NotificationCardState extends State<_NotificationCard> {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      /// 1) Update status + read
+      // 1) Update status + read
       await firestore
           .collection('ownership_verifications')
           .doc(widget.docId)
           .update({
-        'status': accepted ? 'accepted' : 'rejected',
-        'read': true,
-        'updated_at': FieldValue.serverTimestamp(),
-      });
+            'status': accepted ? 'accepted' : 'rejected',
+            'read': true,
+            'updated_at': FieldValue.serverTimestamp(),
+          });
 
       if (!accepted) {
-        if (!mounted) return;
         _showSnack('Verifikasi ditolak');
         return;
       }
 
-      /// 2) Chat ID deterministik (anti dobel)
+      // 2) chatId deterministik
       final myUid = currentUser.uid;
       final ids = [myUid, requesterId]..sort();
       final chatId = '${ids[0]}_${ids[1]}';
 
       final myName =
-          currentUser.displayName ?? currentUser.email?.split('@').first ?? 'User';
+          currentUser.displayName ??
+          currentUser.email?.split('@').first ??
+          'User';
 
       final chatRef = firestore.collection('chats').doc(chatId);
 
-      /// 3) Create chat (merge)
+      // 3) Create chat (merge)
       await chatRef.set({
         'participants': [myUid, requesterId],
-        'participant_names': {
-          myUid: myName,
-          requesterId: requesterName,
-        },
+        'participant_names': {myUid: myName, requesterId: requesterName},
         'last_message': 'Chat dimulai',
         'updated_at': FieldValue.serverTimestamp(),
         'created_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      /// 4) Add first message if empty
+      // ✅ 4) SIMPAN CONTEXT PRODUK KE CHAT (INI FIX HEADER!)
+      final ctx = await _buildChatContextFromVerification(
+        db: firestore,
+        verification: data,
+      );
+
+      if (ctx != null) {
+        await chatRef.set({
+          'context': ctx,
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      // 5) Add first message if empty
       final lastMsg = await chatRef
           .collection('messages')
           .orderBy('created_at', descending: true)
@@ -415,21 +440,14 @@ class _NotificationCardState extends State<_NotificationCard> {
         });
       }
 
-      /// 5) Navigate sesuai router.dart kamu
-      if (!mounted) return;
-
-      context.go(
+      // 6) Navigate
+      router.go(
         '/chat/detail',
-        extra: {
-          'chatId': chatId,
-          'partnerName': requesterName,
-        },
+        extra: {'chatId': chatId, 'partnerName': requesterName},
       );
     } on FirebaseException catch (e) {
-      if (!mounted) return;
       _showSnack('Firebase error: ${e.message ?? e.code}');
     } catch (e) {
-      if (!mounted) return;
       _showSnack('Error: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -437,8 +455,8 @@ class _NotificationCardState extends State<_NotificationCard> {
   }
 
   void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }

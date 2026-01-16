@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../theme/app_colors.dart';
 import '../utils/report_type.dart';
+import '../utils/category_icon_mapper.dart';
 import 'ownership_verification_dialog.dart';
 
 class ReportDetailDialog extends StatelessWidget {
@@ -19,12 +20,122 @@ class ReportDetailDialog extends StatelessWidget {
     required this.reportId,
   });
 
+  // ============================================================
+  // CHAT CONTEXT → disimpan ke chats/{chatId}.context
+  // ============================================================
+  Map<String, dynamic> _buildChatContext() {
+    return {
+      'report_id': reportId,
+      'report_type': type == ReportType.lost ? 'lost' : 'found',
+      'title': (data['name'] ?? '-').toString(),
+      'category': (data['category'] ?? '-').toString(),
+      'location': (data['location'] ?? '').toString(),
+    };
+  }
+
+  // ============================================================
+  // RESOLVE NAMA USER
+  // ============================================================
+  String _resolveOwnerName() {
+    final keys = [
+      'user_name',
+      'owner_name',
+      'reporter_name',
+      'created_by_name',
+    ];
+
+    for (final k in keys) {
+      final v = data[k];
+      if (v != null && v.toString().trim().isNotEmpty) {
+        return v.toString().trim();
+      }
+    }
+    return 'User';
+  }
+
+  String _resolveMyName(User user) {
+    final dn = user.displayName?.trim();
+    if (dn != null && dn.isNotEmpty) return dn;
+
+    final email = user.email?.trim();
+    if (email != null && email.contains('@')) {
+      return email.split('@').first;
+    }
+    return 'User';
+  }
+
+  void _showSnack(BuildContext context, String msg) {
+    ScaffoldMessenger.maybeOf(context)
+        ?.showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ============================================================
+  // OPEN CHAT
+  // ============================================================
+  Future<void> _openChat({
+    required BuildContext rootContext,
+    required String ownerId,
+  }) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      _showSnack(rootContext, 'User belum login');
+      return;
+    }
+
+    if (ownerId == currentUser.uid) {
+      _showSnack(rootContext, 'Tidak bisa chat dengan diri sendiri');
+      return;
+    }
+
+    final router = GoRouter.of(rootContext);
+    final db = FirebaseFirestore.instance;
+
+    final ownerName = _resolveOwnerName();
+    final myName = _resolveMyName(currentUser);
+
+    final ids = [currentUser.uid, ownerId]..sort();
+    final chatId = '${ids[0]}_${ids[1]}';
+
+    final chatRef = db.collection('chats').doc(chatId);
+
+    await chatRef.set(
+      {
+        'participants': [currentUser.uid, ownerId],
+        'participant_names': {
+          currentUser.uid: myName,
+          ownerId: ownerName,
+        },
+        'context': _buildChatContext(),
+        'updated_at': FieldValue.serverTimestamp(),
+        'created_at': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+
+    router.go(
+      '/chat/detail',
+      extra: {
+        'chatId': chatId,
+        'partnerName': ownerName,
+      },
+    );
+  }
+
+  // ============================================================
+  // UI
+  // ============================================================
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
-    final String ownerId = (data['user_id'] ?? '').toString();
-    final bool isMyReport = user != null && user.uid == ownerId;
+    final ownerId = (data['user_id'] ?? '').toString();
+    final isMyReport = user != null && user.uid == ownerId;
+
+    final category = (data['category'] ?? '-').toString();
+    final location = (data['location'] ?? '-').toString();
+    final description = (data['description'] ?? '').toString();
+    final status = (data['status'] ?? 'active').toString();
+    final isDone = status != 'active';
 
     return Dialog(
       shape: RoundedRectangleBorder(
@@ -36,6 +147,7 @@ class ReportDetailDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            // ================= TITLE =================
             Text(
               (data['name'] ?? '-').toString(),
               style: const TextStyle(
@@ -43,7 +155,9 @@ class ReportDetailDialog extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
+
             const SizedBox(height: 6),
+
             Text(
               type == ReportType.lost ? 'Barang Hilang' : 'Barang Temuan',
               style: TextStyle(
@@ -52,47 +166,42 @@ class ReportDetailDialog extends StatelessWidget {
                 color: type == ReportType.lost ? Colors.red : Colors.green,
               ),
             ),
+
             const SizedBox(height: 16),
 
-            if (data['image_url'] != null &&
-                data['image_url'].toString().isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Image.network(
-                  data['image_url'],
-                  height: 180,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) {
-                    return Container(
-                      height: 180,
-                      width: double.infinity,
-                      alignment: Alignment.center,
-                      color: Colors.grey.shade200,
-                      child: const Text('Gambar gagal dimuat'),
-                    );
-                  },
+            // ================= ICON KATEGORI (SELALU) =================
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                height: 180,
+                width: double.infinity,
+                color: Warna.blue,
+                alignment: Alignment.center,
+                child: CategoryIconMapper.buildIcon(
+                  category,
+                  size: 72,
                 ),
               ),
+            ),
 
             const SizedBox(height: 16),
 
+            // ================= LOCATION =================
             RichText(
               text: TextSpan(
                 style: const TextStyle(fontSize: 13, color: Colors.black),
                 children: [
                   const TextSpan(text: 'Lokasi Terakhir : '),
                   TextSpan(
-                    text: (data['location'] ?? '-').toString(),
+                    text: location,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
             ),
 
-            if (type == ReportType.lost &&
-                data['description'] != null &&
-                data['description'].toString().isNotEmpty)
+            // ================= DESCRIPTION (LOST ONLY) =================
+            if (type == ReportType.lost && description.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Column(
@@ -115,11 +224,8 @@ class ReportDetailDialog extends StatelessWidget {
                         border: Border.all(color: Colors.grey.shade300),
                       ),
                       child: Text(
-                        data['description'].toString(),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.black87,
-                        ),
+                        description,
+                        style: const TextStyle(fontSize: 13),
                       ),
                     ),
                   ],
@@ -128,20 +234,44 @@ class ReportDetailDialog extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-            if (!isMyReport)
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: _buildActionButton(context, ownerId: ownerId),
+            // ================= ACTION BUTTON =================
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: _buildActionButton(
+                context,
+                ownerId: ownerId,
+                isMyReport: isMyReport,
+                isDone: isDone,
               ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActionButton(BuildContext context, {required String ownerId}) {
+  Widget _buildActionButton(
+    BuildContext context, {
+    required String ownerId,
+    required bool isMyReport,
+    required bool isDone,
+  }) {
     final rootContext = Navigator.of(context, rootNavigator: true).context;
+
+    // ✅ laporan selesai → tutup
+    if (isDone || isMyReport) {
+      return ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.grey.shade400,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Tutup'),
+      );
+    }
 
     if (type == ReportType.lost) {
       return ElevatedButton(
@@ -153,7 +283,10 @@ class ReportDetailDialog extends StatelessWidget {
         ),
         onPressed: () async {
           Navigator.of(context).pop();
-          await _openChatWithOwner(rootContext, ownerId: ownerId);
+          await _openChat(
+            rootContext: rootContext,
+            ownerId: ownerId,
+          );
         },
         child: const Text('Hubungi'),
       );
@@ -179,90 +312,5 @@ class ReportDetailDialog extends StatelessWidget {
       },
       child: const Text('Verifikasi Kepemilikan'),
     );
-  }
-
-  Future<void> _openChatWithOwner(
-    BuildContext rootContext, {
-    required String ownerId,
-  }) async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      _showSnackSafe(rootContext, 'User belum login');
-      return;
-    }
-
-    if (ownerId.trim().isEmpty) {
-      _showSnackSafe(rootContext, 'Owner tidak valid');
-      return;
-    }
-
-    if (ownerId == currentUser.uid) {
-      _showSnackSafe(rootContext, 'Tidak bisa chat dengan diri sendiri');
-      return;
-    }
-
-    final db = FirebaseFirestore.instance;
-
-    try {
-      // ✅ Karena /users tidak bisa dibaca user lain (rules), ambil dari report data
-      final ownerName = _resolveOwnerNameFromReport(data);
-
-      // Nama saya dari auth (aman)
-      final myName = currentUser.displayName ??
-          currentUser.email?.split('@').first ??
-          'User';
-
-      // Chat ID deterministik
-      final ids = [currentUser.uid, ownerId]..sort();
-      final chatId = '${ids[0]}_${ids[1]}';
-
-      final chatRef = db.collection('chats').doc(chatId);
-
-      await chatRef.set({
-        'participants': [currentUser.uid, ownerId],
-        'participant_names': {
-          currentUser.uid: myName,
-          ownerId: ownerName,
-        },
-        'last_message': 'Chat dimulai',
-        'updated_at': FieldValue.serverTimestamp(),
-        'created_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // Navigasi ke chat detail
-      rootContext.go(
-        '/chat/detail',
-        extra: {
-          'chatId': chatId,
-          'partnerName': ownerName,
-        },
-      );
-    } on FirebaseException catch (e) {
-      _showSnackSafe(rootContext, 'Firebase error: ${e.message ?? e.code}');
-    } catch (e) {
-      _showSnackSafe(rootContext, 'Error: $e');
-    }
-  }
-
-  /// Ambil nama owner dari data report (karena users collection private).
-  String _resolveOwnerNameFromReport(Map<String, dynamic> reportData) {
-    final candidates = [
-      reportData['user_name'],
-      reportData['owner_name'],
-      reportData['reporter_name'],
-      reportData['created_by_name'],
-    ];
-
-    for (final c in candidates) {
-      if (c != null && c.toString().trim().isNotEmpty) {
-        return c.toString().trim();
-      }
-    }
-    return 'User';
-  }
-
-  void _showSnackSafe(BuildContext context, String msg) {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    messenger?.showSnackBar(SnackBar(content: Text(msg)));
   }
 }

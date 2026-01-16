@@ -28,53 +28,71 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lostStream =
+        FirebaseFirestore.instance.collection('lost_items').snapshots();
+    final foundStream =
+        FirebaseFirestore.instance.collection('found_items').snapshots();
+
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(title: const Text('Kategori')),
-
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('lost_items').snapshots(),
+        stream: lostStream,
         builder: (context, lostSnapshot) {
-          if (!lostSnapshot.hasData) {
+          if (lostSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (lostSnapshot.hasError) {
+            return const Center(child: Text('Gagal memuat lost_items'));
           }
 
           return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('found_items')
-                .snapshots(),
+            stream: foundStream,
             builder: (context, foundSnapshot) {
-              if (!foundSnapshot.hasData) {
+              if (foundSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
+              if (foundSnapshot.hasError) {
+                return const Center(child: Text('Gagal memuat found_items'));
+              }
 
-              /// ================= MERGE DATA =================
-              final lostItems = lostSnapshot.data!.docs.map((d) {
-                final data = d.data() as Map<String, dynamic>;
-                data['type'] = 'lost';
-                return data;
+              /// ================= MERGE DATA (with doc_id + type) =================
+              final lostItems = (lostSnapshot.data?.docs ?? []).map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return {
+                  ...data,
+                  'type': 'lost',
+                  'doc_id': doc.id,
+                };
               }).toList();
 
-              final foundItems = foundSnapshot.data!.docs.map((d) {
-                final data = d.data() as Map<String, dynamic>;
-                data['type'] = 'found';
-                return data;
+              final foundItems = (foundSnapshot.data?.docs ?? []).map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return {
+                  ...data,
+                  'type': 'found',
+                  'doc_id': doc.id,
+                };
               }).toList();
 
               final allItems = [...lostItems, ...foundItems];
 
+              /// ================= FILTER =================
               final filteredItems = selectedCategory == 'Semua'
                   ? allItems
                   : allItems
                       .where((e) =>
-                          e['category'].toString().toLowerCase() ==
+                          (e['category'] ?? '')
+                              .toString()
+                              .toLowerCase() ==
                           selectedCategory.toLowerCase())
                       .toList();
 
+              /// ================= STATS =================
               final total = allItems.length;
-              final found =
+              final foundCount =
                   allItems.where((e) => e['type'] == 'found').length;
-              final lost =
+              final lostCount =
                   allItems.where((e) => e['type'] == 'lost').length;
 
               return SingleChildScrollView(
@@ -87,9 +105,9 @@ class _CategoryScreenState extends State<CategoryScreen> {
                       children: [
                         _StatBox('Total Item', total, Colors.blue),
                         const SizedBox(width: 8),
-                        _StatBox('Ditemukan', found, Colors.green),
+                        _StatBox('Ditemukan', foundCount, Colors.green),
                         const SizedBox(width: 8),
-                        _StatBox('Dicari', lost, Colors.red),
+                        _StatBox('Dicari', lostCount, Colors.red),
                       ],
                     ),
 
@@ -108,8 +126,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                               selected: active,
                               selectedColor: Warna.blue,
                               labelStyle: TextStyle(
-                                color:
-                                    active ? Colors.white : Colors.black,
+                                color: active ? Colors.white : Colors.black,
                               ),
                               onSelected: (_) {
                                 setState(() => selectedCategory = cat);
@@ -145,7 +162,6 @@ class _CategoryScreenState extends State<CategoryScreen> {
           );
         },
       ),
-
       bottomNavigationBar: const Navbar(currentIndex: 1),
     );
   }
@@ -190,7 +206,9 @@ class _StatBox extends StatelessWidget {
 }
 
 /// ============================================================
-/// ITEM CARD (GAMBAR vs ICON)
+/// ITEM CARD (RULE FINAL):
+/// - LOST  → tampilkan gambar laporan (kalau valid)
+/// - FOUND → SELALU icon kategori (abaikan image_url)
 /// ============================================================
 class _ItemCard extends StatelessWidget {
   final Map<String, dynamic> data;
@@ -199,15 +217,15 @@ class _ItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isLost = data['type'] == 'lost';
-    final String name = data['name'];
-    final String category = data['category'];
-    final String location = data['location'];
-    final String? imageUrl = data['image_url'];
-    final Timestamp? createdAt = data['created_at'];
+    final bool isLost = (data['type'] ?? 'lost') == 'lost';
 
-    final String timeText =
-        createdAt != null ? timeAgo(createdAt) : '-';
+    final String name = (data['name'] ?? '-').toString();
+    final String category = (data['category'] ?? '-').toString();
+    final String location = (data['location'] ?? '-').toString();
+    final Timestamp? createdAt =
+        data['created_at'] is Timestamp ? data['created_at'] as Timestamp : null;
+
+    final String timeText = createdAt != null ? timeAgo(createdAt) : '-';
 
     return Container(
       decoration: BoxDecoration(
@@ -219,22 +237,11 @@ class _ItemCard extends StatelessWidget {
         children: [
           /// ================= IMAGE / ICON =================
           ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(18),
-            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
             child: SizedBox(
               height: 120,
               width: double.infinity,
-              child: isLost && imageUrl != null
-                  ? Image.network(imageUrl, fit: BoxFit.cover)
-                  : Container(
-                      color: Warna.blue,
-                      alignment: Alignment.center,
-                      child: CategoryIconMapper.buildIcon(
-                        category,
-                        size: 48,
-                      ),
-                    ),
+              child: _buildPreview(isLost: isLost, category: category),
             ),
           ),
 
@@ -245,9 +252,7 @@ class _ItemCard extends StatelessWidget {
               children: [
                 Text(
                   name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -255,23 +260,20 @@ class _ItemCard extends StatelessWidget {
                 const SizedBox(height: 4),
 
                 Text(
-                  isLost
-                      ? 'Hilang : $timeText'
-                      : 'Ditemukan : $timeText',
+                  isLost ? 'Hilang : $timeText' : 'Ditemukan : $timeText',
                   style: TextStyle(
                     fontSize: 12,
                     color: isLost ? Colors.red : Colors.green,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
 
                 const SizedBox(height: 2),
 
                 Text(
                   'Lokasi Terakhir : $location',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.black54,
-                  ),
+                  style: const TextStyle(fontSize: 11, color: Colors.black54),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -302,6 +304,46 @@ class _ItemCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// RULE FINAL:
+  /// - FOUND → icon kategori (selalu)
+  /// - LOST  → gambar kalau URL valid, kalau tidak icon kategori
+  Widget _buildPreview({
+    required bool isLost,
+    required String category,
+  }) {
+    // ✅ FOUND SELALU ICON (abaikan image_url)
+    if (!isLost) {
+      return _icon(category);
+    }
+
+    // ✅ LOST: pakai image_url kalau valid
+    final raw = data['image_url'];
+    final imageUrl = raw?.toString().trim();
+
+    final bool valid = imageUrl != null &&
+        imageUrl.isNotEmpty &&
+        imageUrl.toLowerCase() != 'null' &&
+        (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'));
+
+    if (valid) {
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _icon(category),
+      );
+    }
+
+    return _icon(category);
+  }
+
+  Widget _icon(String category) {
+    return Container(
+      color: Warna.blue,
+      alignment: Alignment.center,
+      child: CategoryIconMapper.buildIcon(category, size: 48),
     );
   }
 }
